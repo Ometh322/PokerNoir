@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback } from "react";
 import FirebaseService from "../services/firebase-service";
 
 export interface BlindLevel {
@@ -263,38 +263,32 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     };
   }, [firebaseService]);
 
-  // Save state to Firebase with improved error handling and status tracking
+  // Исправляем функцию сохранения в Firebase - сохраняем КАЖДОЕ изменение
   React.useEffect(() => {
     if (isLoading) return;
     
-    // Clear any existing timeout
+    // Очищаем предыдущий таймер
     if (saveDebounceRef.current) {
       clearTimeout(saveDebounceRef.current);
     }
     
-    // Set saving status
+    // Устанавливаем статус сохранения
     setSaveStatus('saving');
     
-    // Set a new timeout
+    // Устанавливаем новый таймер с небольшой задержкой
     saveDebounceRef.current = setTimeout(async () => {
-      // Add timestamp before saving
-      const stateWithTimestamp = {
-        ...state,
-        lastUpdated: Date.now()
-      };
-      
       try {
-        // Also save to localStorage as backup
-        try {
-          localStorage.setItem("tournamentState", JSON.stringify(stateWithTimestamp));
-        } catch (storageError) {
-          console.error("Failed to save to localStorage:", storageError);
-        }
+        // Сохраняем в localStorage для резервной копии
+        localStorage.setItem("tournamentState", JSON.stringify(state));
         
-        await firebaseService.updateActiveTournament(stateWithTimestamp);
+        // Сохраняем в Firebase
+        await firebaseService.updateActiveTournament(state);
         setSaveStatus('success');
         
-        // Reset status after a delay
+        // Обновляем время последней синхронизации
+        setLastSyncTime(Date.now());
+        
+        // Сбрасываем статус через 2 секунды
         if (saveStatusTimeoutRef.current) {
           clearTimeout(saveStatusTimeoutRef.current);
         }
@@ -305,7 +299,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         console.error("Failed to save tournament state:", error);
         setSaveStatus('error');
       }
-    }, 800); // Increased debounce time to 800ms
+    }, 300); // Уменьшаем задержку до 300ms
     
     return () => {
       if (saveDebounceRef.current) {
@@ -317,45 +311,400 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     };
   }, [state, firebaseService, isLoading]);
 
-  // Timer logic with improved cleanup
-  React.useEffect(() => {
-    if (state.isRunning) {
-      timerRef.current = window.setInterval(() => {
-        setState((prevState) => {
-          if (prevState.timeRemaining <= 1) {
-            // Time's up, move to next level
-            const nextLevelIndex = prevState.currentLevelIndex + 1;
-            if (nextLevelIndex < prevState.levels.length) {
-              return {
-                ...prevState,
-                currentLevelIndex: nextLevelIndex,
-                timeRemaining: prevState.levels[nextLevelIndex].duration * 60,
-              };
-            } else {
-              // Tournament ended
-              return {
-                ...prevState,
-                isRunning: false,
-                timeRemaining: 0,
-              };
-            }
-          }
-          
-          return {
-            ...prevState,
-            timeRemaining: prevState.timeRemaining - 1,
-          };
-        });
-      }, 1000);
+  // Добавляем функцию для принудительного сохранения
+  const forceSave = async () => {
+    try {
+      setSaveStatus('saving');
+      await firebaseService.updateActiveTournament(state);
+      setSaveStatus('success');
+      setLastSyncTime(Date.now());
+    } catch (error) {
+      console.error("Failed to force save:", error);
+      setSaveStatus('error');
     }
+  };
 
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
+  // Исправляем функции для работы с игроками - добавляем принудительное сохранение
+  const addRebuy = (playerId: number) => {
+    if (typeof playerId !== 'number' || isNaN(playerId)) {
+      console.error("Invalid player ID:", playerId);
+      return;
+    }
+    
+    setState(prevState => {
+      // Создаем новый массив игроков
+      const newPlayers = (prevState.players || []).map(player => {
+        // Если это нужный игрок, увеличиваем количество ребаев
+        if (player && player.id === playerId) {
+          return {
+            ...player,
+            rebuys: (player.rebuys || 0) + 1
+          };
+        }
+        // Иначе возвращаем игрока без изменений
+        return player;
+      });
+      
+      // Возвращаем новое состояние с обновленным массивом игроков
+      const newState = {
+        ...prevState,
+        players: newPlayers,
+        lastUpdated: Date.now() // Обязательно обновляем timestamp
+      };
+      
+      // Принудительно сохраняем изменения
+      setTimeout(() => forceSave(), 100);
+      
+      return newState;
+    });
+  };
+
+  const addAddon = (playerId: number) => {
+    if (typeof playerId !== 'number' || isNaN(playerId)) {
+      console.error("Invalid player ID:", playerId);
+      return;
+    }
+    
+    setState(prevState => {
+      // Создаем новый массив игроков
+      const newPlayers = (prevState.players || []).map(player => {
+        // Если это нужный игрок, увеличиваем количество аддонов
+        if (player && player.id === playerId) {
+          return {
+            ...player,
+            addons: (player.addons || 0) + 1
+          };
+        }
+        // Иначе возвращаем игрока без изменений
+        return player;
+      });
+      
+      // Возвращаем новое состояние с обновленным массивом игроков
+      const newState = {
+        ...prevState,
+        players: newPlayers,
+        lastUpdated: Date.now() // Обязательно обновляем timestamp
+      };
+      
+      // Принудительно сохраняем изменения
+      setTimeout(() => forceSave(), 100);
+      
+      return newState;
+    });
+  };
+
+  const eliminatePlayer = (playerId: number) => {
+    if (typeof playerId !== 'number' || isNaN(playerId)) {
+      console.error("Invalid player ID:", playerId);
+      return;
+    }
+    
+    setState(prevState => {
+      // Проверяем, что массив players существует
+      if (!prevState.players || !Array.isArray(prevState.players)) {
+        console.error("Players array is undefined or not an array");
+        return prevState;
       }
-    };
-  }, [state.isRunning]);
+      
+      // Находим игрока с дополнительной проверкой
+      const playerToEliminate = prevState.players.find(p => p && p.id === playerId);
+      
+      // Если игрок не найден или уже выбыл, возвращаем текущее состояние
+      if (!playerToEliminate) {
+        console.error("Player not found:", playerId);
+        return prevState;
+      }
+      
+      if (playerToEliminate.isEliminated) {
+        console.warn("Player already eliminated:", playerId);
+        return prevState;
+      }
+      
+      // Вычисляем новый порядок выбывания
+      const nextEliminationOrder = (prevState.eliminationCount || 0) + 1;
+      
+      // Создаем новый массив игроков
+      const newPlayers = prevState.players.map(player => {
+        // Дополнительная проверка на существование player
+        if (!player) return player;
+        
+        // Если это нужный игрок, отмечаем его как выбывшего
+        if (player.id === playerId) {
+          return {
+            ...player,
+            isEliminated: true,
+            eliminationOrder: nextEliminationOrder
+          };
+        }
+        // Иначе возвращаем игрока без изменений
+        return player;
+      });
+      
+      // Возвращаем новое состояние с обновленным массивом игроков
+      const newState = {
+        ...prevState,
+        players: newPlayers,
+        eliminationCount: nextEliminationOrder,
+        lastUpdated: Date.now() // Обязательно обновляем timestamp
+      };
+      
+      // Принудительно сохраняем изменения
+      setTimeout(() => forceSave(), 100);
+      
+      return newState;
+    });
+  };
+
+  const revivePlayer = (playerId: number) => {
+    if (typeof playerId !== 'number' || isNaN(playerId)) {
+      console.error("Invalid player ID:", playerId);
+      return;
+    }
+    
+    setState(prevState => {
+      // Проверяем, что массив players существует
+      if (!prevState.players || !Array.isArray(prevState.players)) {
+        console.error("Players array is undefined or not an array");
+        return prevState;
+      }
+      
+      // Находим игрока с дополнительной проверкой
+      const playerToRevive = prevState.players.find(p => p && p.id === playerId);
+      
+      // Если игрок не найден или не выбыл, возвращаем текущее состояние
+      if (!playerToRevive) {
+        console.error("Player not found:", playerId);
+        return prevState;
+      }
+      
+      if (!playerToRevive.isEliminated) {
+        console.warn("Player is not eliminated:", playerId);
+        return prevState;
+      }
+      
+      // Получаем порядок выбывания игрока
+      const eliminationOrder = playerToRevive.eliminationOrder;
+      
+      // Создаем новый массив игроков с дополнительными проверками
+      const newPlayers = prevState.players.map(player => {
+        // Дополнительная проверка на существование player
+        if (!player) return player;
+        
+        if (player.id === playerId) {
+          // Возвращаем игрока в игру и добавляем ребай
+          return {
+            ...player,
+            isEliminated: false,
+            eliminationOrder: null,
+            rebuys: (player.rebuys || 0) + 1
+          };
+        } else if (player.eliminationOrder && eliminationOrder && player.eliminationOrder > eliminationOrder) {
+          // Уменьшаем порядок выбывания для игроков, выбывших после этого
+          return {
+            ...player,
+            eliminationOrder: player.eliminationOrder - 1
+          };
+        }
+        // Иначе возвращаем игрока без изменений
+        return player;
+      });
+      
+      // Возвращаем новое состояние с обновленным массивом игроков
+      const newState = {
+        ...prevState,
+        players: newPlayers,
+        eliminationCount: Math.max(0, (prevState.eliminationCount || 0) - 1),
+        lastUpdated: Date.now() // Обязательно обновляем timestamp
+      };
+      
+      // Принудительно сохраняем изменения
+      setTimeout(() => forceSave(), 100);
+      
+      return newState;
+    });
+  };
+
+  const removePlayer = (playerId: number) => {
+    if (typeof playerId !== 'number' || isNaN(playerId)) {
+      console.error("Invalid player ID:", playerId);
+      return;
+    }
+    
+    setState(prevState => {
+      // Проверяем, что массив players существует
+      if (!prevState.players || !Array.isArray(prevState.players)) {
+        console.error("Players array is undefined or not an array");
+        return prevState;
+      }
+      
+      // Фильтруем массив игроков, исключая игрока с указанным id
+      const newPlayers = prevState.players.filter(player => player && player.id !== playerId);
+      
+      // Возвращаем новое состояние с обновленным массивом игроков
+      const newState = {
+        ...prevState,
+        players: newPlayers,
+        lastUpdated: Date.now() // Обязательно обновляем timestamp
+      };
+      
+      // Принудительно сохраняем изменения
+      setTimeout(() => forceSave(), 100);
+      
+      return newState;
+    });
+  };
+
+  // Исправляем функцию syncData для принудительной синхронизации
+  const syncData = useCallback(async (timeoutMs: number = 10000) => {
+    try {
+      setIsLoading(true);
+      setSaveStatus('saving');
+      
+      // Сначала сохраняем текущее состояние
+      await firebaseService.updateActiveTournament(state);
+      
+      // Затем получаем актуальное состояние с сервера
+      const activeTournament = await firebaseService.getActiveTournament(30000); // 30s timeout
+      
+      if (activeTournament) {
+        // Проверяем, что полученное состояние новее текущего
+        if (activeTournament.lastUpdated > state.lastUpdated) {
+          setState(activeTournament);
+        } else {
+          // Если наше состояние новее, отправляем его на сервер
+          await firebaseService.updateActiveTournament(state);
+        }
+        
+        setLastSyncTime(Date.now());
+        setSaveStatus('success');
+        
+        // Также сохраняем в localStorage как резервную копию
+        localStorage.setItem("tournamentState", JSON.stringify(
+          activeTournament.lastUpdated > state.lastUpdated ? activeTournament : state
+        ));
+      } else {
+        // Если нет активного турнира, создаем его с текущим состоянием
+        await firebaseService.createTournament(state.name || "Новый турнир", state);
+        setSaveStatus('success');
+      }
+    } catch (error) {
+      console.error("Failed to sync tournament state:", error);
+      setSaveStatus('error');
+    } finally {
+      setIsLoading(false);
+      
+      // Сбрасываем статус через задержку
+      setTimeout(() => {
+        setSaveStatus('idle');
+      }, 2000);
+    }
+  }, [state, firebaseService]);
+
+  // Timer logic with improved cleanup
+  // React.useEffect(() => {
+  //   if (state.isRunning) {
+  //     timerRef.current = window.setInterval(() => {
+  //       setState((prevState) => {
+  //         if (prevState.timeRemaining <= 1) {
+  //           // Time's up, move to next level
+  //           const nextLevelIndex = prevState.currentLevelIndex + 1;
+  //           if (nextLevelIndex < prevState.levels.length) {
+  //             return {
+  //               ...prevState,
+  //               currentLevelIndex: nextLevelIndex,
+  //               timeRemaining: prevState.levels[nextLevelIndex].duration * 60,
+  //             };
+  //           } else {
+  //             // Tournament ended
+  //             return {
+  //               ...prevState,
+  //               isRunning: false,
+  //               timeRemaining: 0,
+  //             };
+  //           }
+  //         }
+          
+  //         return {
+  //           ...prevState,
+  //           timeRemaining: prevState.timeRemaining - 1,
+  //         };
+  //       });
+  //     }, 1000);
+  //   }
+
+  //   return () => {
+  //     if (timerRef.current) {
+  //       clearInterval(timerRef.current);
+  //       timerRef.current = null;
+  //     }
+  //   };
+  // }, [state.isRunning]);
+  React.useEffect(() => {
+  if (!state.isRunning) {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    return;
+  }
+
+  // Используем requestAnimationFrame для более плавной анимации
+  let lastUpdateTime = Date.now();
+  let accumulatedTime = 0;
+  
+  const updateTimer = () => {
+    const now = Date.now();
+    const deltaTime = now - lastUpdateTime;
+    lastUpdateTime = now;
+    
+    accumulatedTime += deltaTime;
+    
+    // Обновляем состояние только когда накопилась 1 секунда
+    if (accumulatedTime >= 1000) {
+      const secondsToSubtract = Math.floor(accumulatedTime / 1000);
+      accumulatedTime %= 1000;
+      
+      setState((prevState) => {
+        if (prevState.timeRemaining <= secondsToSubtract) {
+          // Время вышло - переходим на следующий уровень
+          const nextLevelIndex = prevState.currentLevelIndex + 1;
+          if (nextLevelIndex < prevState.levels.length) {
+            return {
+              ...prevState,
+              currentLevelIndex: nextLevelIndex,
+              timeRemaining: prevState.levels[nextLevelIndex].duration * 60,
+            };
+          } else {
+            // Турнир завершен
+            return {
+              ...prevState,
+              isRunning: false,
+              timeRemaining: 0,
+            };
+          }
+        }
+        
+        return {
+          ...prevState,
+          timeRemaining: prevState.timeRemaining - secondsToSubtract,
+        };
+      });
+    }
+    
+    if (state.isRunning) {
+      timerRef.current = requestAnimationFrame(updateTimer);
+    }
+  };
+  
+  timerRef.current = requestAnimationFrame(updateTimer);
+  
+  return () => {
+    if (timerRef.current) {
+      cancelAnimationFrame(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+}, [state.isRunning]);
 
   // Clean up all Firebase listeners on unmount
   React.useEffect(() => {
@@ -462,128 +811,191 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
   };
 
-  const removePlayer = (id: number) => {
-    setState((prevState) => ({
-      ...prevState,
-      players: (prevState.players || []).filter((player) => player.id !== id),
-      lastUpdated: Date.now() // Add timestamp for Firebase sync
-    }));
-  };
+  // Исправляем функции для работы с игроками - делаем их максимально простыми
+  // const addRebuy = (playerId: number) => {
+  //   setState(prevState => {
+  //     // Создаем новый массив игроков
+  //     const newPlayers = prevState.players.map(player => {
+  //       // Если это нужный игрок, увеличиваем количество ребаев
+  //       if (player.id === playerId) {
+  //         return {
+  //           ...player,
+  //           rebuys: (player.rebuys || 0) + 1
+  //         };
+  //       }
+  //       // Иначе возвращаем игрока без изменений
+  //       return player;
+  //     });
+      
+  //     // Возвращаем новое состояние с обновленным массивом игроков
+  //     return {
+  //       ...prevState,
+  //       players: newPlayers,
+  //       lastUpdated: Date.now()
+  //     };
+  //   });
+  // };
 
-  // Исправляем функции для работы с игроками
-  const addRebuy = (playerId: number) => {
-    console.log("Adding rebuy for player", playerId);
-    setState((prevState) => {
-      // Находим игрока по ID
-      const player = prevState.players.find(p => p.id === playerId);
-      if (!player) {
-        console.error("Player not found:", playerId);
-        return prevState;
-      }
+  // const addAddon = (playerId: number) => {
+  //   setState(prevState => {
+  //     // Создаем новый массив игроков
+  //     const newPlayers = prevState.players.map(player => {
+  //       // Если это нужный игрок, увеличиваем количество аддонов
+  //       if (player.id === playerId) {
+  //         return {
+  //           ...player,
+  //           addons: (player.addons || 0) + 1
+  //         };
+  //       }
+  //       // Иначе возвращаем игрока без изменений
+  //       return player;
+  //     });
       
-      return {
-        ...prevState,
-        players: prevState.players.map((p) =>
-          p.id === playerId
-            ? { ...p, rebuys: (p.rebuys || 0) + 1 }
-            : p
-        ),
-        lastUpdated: Date.now()
-      };
-    });
-  };
+  //     // Возвращаем новое состояние с обновленным массивом игроков
+  //     return {
+  //       ...prevState,
+  //       players: newPlayers,
+  //       lastUpdated: Date.now()
+  //     };
+  //   });
+  // };
 
-  const addAddon = (playerId: number) => {
-    console.log("Adding addon for player", playerId);
-    setState((prevState) => {
-      // Находим игрока по ID
-      const player = prevState.players.find(p => p.id === playerId);
-      if (!player) {
-        console.error("Player not found:", playerId);
-        return prevState;
-      }
+  // const eliminatePlayer = (playerId: number) => {
+  //   // Проверяем, что playerId - это валидное число
+  //   if (typeof playerId !== 'number' || isNaN(playerId)) {
+  //     console.error("Invalid player ID:", playerId);
+  //     return;
+  //   }
+    
+  //   setState(prevState => {
+  //     // Проверяем, что массив players существует
+  //     if (!prevState.players || !Array.isArray(prevState.players)) {
+  //       console.error("Players array is undefined or not an array");
+  //       return prevState;
+  //     }
       
-      return {
-        ...prevState,
-        players: prevState.players.map((p) =>
-          p.id === playerId
-            ? { ...p, addons: (p.addons || 0) + 1 }
-            : p
-        ),
-        lastUpdated: Date.now()
-      };
-    });
-  };
+  //     // Находим игрока с дополнительной проверкой
+  //     const playerToEliminate = prevState.players.find(p => p && p.id === playerId);
+      
+  //     // Если игрок не найден или уже выбыл, возвращаем текущее состояние
+  //     if (!playerToEliminate) {
+  //       console.error("Player not found:", playerId);
+  //       return prevState;
+  //     }
+      
+  //     if (playerToEliminate.isEliminated) {
+  //       console.warn("Player already eliminated:", playerId);
+  //       return prevState;
+  //     }
+      
+  //     // Вычисляем новый порядок выбывания
+  //     const nextEliminationOrder = (prevState.eliminationCount || 0) + 1;
+      
+  //     // Создаем новый массив игроков
+  //     const newPlayers = prevState.players.map(player => {
+  //       // Дополнительная проверка на существование player
+  //       if (!player) return player;
+        
+  //       // Если это нужный игрок, отмечаем его как выбывшего
+  //       if (player.id === playerId) {
+  //         return {
+  //           ...player,
+  //           isEliminated: true,
+  //           eliminationOrder: nextEliminationOrder
+  //         };
+  //       }
+  //       // Иначе возвращаем игрока без изменений
+  //       return player;
+  //     });
+      
+  //     // Возвращаем новое состояние с обновленным массивом игроков
+  //     return {
+  //       ...prevState,
+  //       players: newPlayers,
+  //       eliminationCount: nextEliminationOrder,
+  //       lastUpdated: Date.now()
+  //     };
+  //   });
+  // };
 
-  const eliminatePlayer = (playerId: number) => {
-    console.log("Eliminating player", playerId);
-    setState((prevState) => {
-      // Находим игрока по ID
-      const player = prevState.players.find(p => p.id === playerId);
-      if (!player) {
-        console.error("Player not found:", playerId);
-        return prevState;
-      }
+  // const revivePlayer = (playerId: number) => {
+  //   // Проверяем, что playerId - это валидное число
+  //   if (typeof playerId !== 'number' || isNaN(playerId)) {
+  //     console.error("Invalid player ID:", playerId);
+  //     return;
+  //   }
+    
+  //   setState(prevState => {
+  //     // Проверяем, что массив players существует
+  //     if (!prevState.players || !Array.isArray(prevState.players)) {
+  //       console.error("Players array is undefined or not an array");
+  //       return prevState;
+  //     }
       
-      // Если игрок уже выбыл, ничего не делаем
-      if (player.isEliminated) {
-        console.log("Player already eliminated");
-        return prevState;
-      }
+  //     // Находим игрока с дополнительной проверкой
+  //     const playerToRevive = prevState.players.find(p => p && p.id === playerId);
       
-      const nextEliminationOrder = (prevState.eliminationCount || 0) + 1;
-      return {
-        ...prevState,
-        eliminationCount: nextEliminationOrder,
-        players: prevState.players.map((p) =>
-          p.id === playerId
-            ? { ...p, isEliminated: true, eliminationOrder: nextEliminationOrder }
-            : p
-        ),
-        lastUpdated: Date.now()
-      };
-    });
-  };
+  //     // Если игрок не найден или не выбыл, возвращаем текущее состояние
+  //     if (!playerToRevive) {
+  //       console.error("Player not found:", playerId);
+  //       return prevState;
+  //     }
+      
+  //     if (!playerToRevive.isEliminated) {
+  //       console.warn("Player is not eliminated:", playerId);
+  //       return prevState;
+  //     }
+      
+  //     // Получаем порядок выбывания игрока
+  //     const eliminationOrder = playerToRevive.eliminationOrder;
+      
+  //     // Создаем новый массив игроков с дополнительными проверками
+  //     const newPlayers = prevState.players.map(player => {
+  //       // Дополнительная проверка на существование player
+  //       if (!player) return player;
+        
+  //       if (player.id === playerId) {
+  //         // Возвращаем игрока в игру и добавляем ребай
+  //         return {
+  //           ...player,
+  //           isEliminated: false,
+  //           eliminationOrder: null,
+  //           rebuys: (player.rebuys || 0) + 1
+  //         };
+  //       } else if (player.eliminationOrder && eliminationOrder && player.eliminationOrder > eliminationOrder) {
+  //         // Уменьшаем порядок выбывания для игроков, выбывших после этого
+  //         return {
+  //           ...player,
+  //           eliminationOrder: player.eliminationOrder - 1
+  //         };
+  //       }
+  //       // Иначе возвращаем игрока без изменений
+  //       return player;
+  //     });
+      
+  //     // Возвращаем новое состояние с обновленным массивом игроков
+  //     return {
+  //       ...prevState,
+  //       players: newPlayers,
+  //       eliminationCount: Math.max(0, (prevState.eliminationCount || 0) - 1),
+  //       lastUpdated: Date.now()
+  //     };
+  //   });
+  // };
 
-  const revivePlayer = (playerId: number) => {
-    setState((prevState) => {
-      // Find the player to revive
-      const playerToRevive = (prevState.players || []).find(p => p.id === playerId);
+  // const removePlayer = (playerId: number) => {
+  //   setState(prevState => {
+  //     // Фильтруем массив игроков, исключая игрока с указанным id
+  //     const newPlayers = prevState.players.filter(player => player.id !== playerId);
       
-      if (!playerToRevive || !playerToRevive.isEliminated) {
-        return prevState;
-      }
-      
-      // Get the elimination order of the player
-      const eliminationOrder = playerToRevive.eliminationOrder;
-      
-      // Update all players with higher elimination order
-      const updatedPlayers = (prevState.players || []).map(player => {
-        if (player.id === playerId) {
-          // Revive this player and add a rebuy
-          return { 
-            ...player, 
-            isEliminated: false, 
-            eliminationOrder: null,
-            rebuys: (player.rebuys || 0) + 1 
-          };
-        } else if (player.eliminationOrder && eliminationOrder && player.eliminationOrder > eliminationOrder) {
-          // Decrement elimination order for players eliminated after this one
-          return { 
-            ...player, 
-            eliminationOrder: player.eliminationOrder - 1 
-          };
-        }
-        return player;
-      });
-      
-      return {
-        ...prevState,
-        eliminationCount: (prevState.eliminationCount || 0) - 1,
-        players: updatedPlayers,
-      };
-    });
-  };
+  //     // Возвращаем новое состояние с обновленным массивом игроков
+  //     return {
+  //       ...prevState,
+  //       players: newPlayers,
+  //       lastUpdated: Date.now()
+  //     };
+  //   });
+  // };
 
   const resetEliminations = () => {
     setState((prevState) => ({
@@ -635,69 +1047,110 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const addBountyChips = (playerId: number, amount: number) => {
-    setState((prevState) => ({
-      ...prevState,
-      players: (prevState.players || []).map((player) =>
-        player.id === playerId
-          ? { ...player, bountyChips: amount }
-          : player
-      ),
-      lastUpdated: Date.now() // Add timestamp for Firebase sync
-    }));
+    // Проверяем, что playerId - это число
+    if (typeof playerId !== 'number' || isNaN(playerId)) {
+      console.error("Invalid player ID:", playerId);
+      return;
+    }
+    
+    // Проверяем, что amount - это число
+    const bountyAmount = Number(amount) || 0;
+    
+    setState((prevState) => {
+      // Проверяем, существует ли игрок
+      const playerExists = prevState.players.some(p => p.id === playerId);
+      if (!playerExists) {
+        console.error("Player not found:", playerId);
+        return prevState;
+      }
+      
+      return {
+        ...prevState,
+        players: prevState.players.map((player) =>
+          player.id === playerId
+            ? { ...player, bountyChips: bountyAmount }
+            : player
+        ),
+        lastUpdated: Date.now()
+      };
+    });
   };
 
   // Manual sync function with timeout and error handling
-  const syncData = async () => {
-    try {
-      setIsLoading(true);
-      setSaveStatus('saving');
+  // const syncData = useCallback(async (timeoutMs: number = 10000) => {
+  //   try {
+  //     setIsLoading(true);
+  //     setSaveStatus('saving');
       
-      // Try to get active tournament with increased timeout
-      const activeTournament = await firebaseService.getActiveTournament(30000); // 30s timeout
+  //     // Try to get active tournament with increased timeout
+  //     const activeTournament = await firebaseService.getActiveTournament(30000); // 30s timeout
       
-      if (activeTournament) {
-        setState(activeTournament);
-        setLastSyncTime(Date.now());
-        setSaveStatus('success');
+  //     if (activeTournament) {
+  //       // Проверяем, что полученное состояние новее текущего
+  //       if (activeTournament.lastUpdated > state.lastUpdated) {
+  //         setState(activeTournament);
+  //       } else {
+  //         // Если наше состояние новее, отправляем его на сервер
+  //         await firebaseService.updateActiveTournament(state);
+  //       }
         
-        // Also save to localStorage as backup
-        try {
-          localStorage.setItem("tournamentState", JSON.stringify(activeTournament));
-        } catch (storageError) {
-          console.error("Failed to save to localStorage:", storageError);
-        }
-      } else {
-        // If no active tournament, try to create one with current state
-        try {
-          await firebaseService.createTournament(state.name || "Новый турнир", state);
-          setSaveStatus('success');
-        } catch (createError) {
-          console.error("Failed to create tournament during sync:", createError);
-          setSaveStatus('error');
-        }
-      }
-    } catch (error) {
-      console.error("Failed to sync tournament state:", error);
-      setSaveStatus('error');
-    } finally {
-      setIsLoading(false);
+  //       setLastSyncTime(Date.now());
+  //       setSaveStatus('success');
+        
+  //       // Также сохраняем в localStorage как резервную копию
+  //       localStorage.setItem("tournamentState", JSON.stringify(
+  //         activeTournament.lastUpdated > state.lastUpdated ? activeTournament : state
+  //       ));
+  //     } else {
+  //       // Если нет активного турнира, создаем его с текущим состоянием
+  //       await firebaseService.createTournament(state.name || "Новый турнир", state);
+  //       setSaveStatus('success');
+  //     }
+  //   } catch (error) {
+  //     console.error("Failed to sync tournament state:", error);
+  //     setSaveStatus('error');
+  //   } finally {
+  //     setIsLoading(false);
       
-      // Reset status after a delay
-      setTimeout(() => {
-        setSaveStatus('idle');
-      }, 2000);
-    }
-  };
+  //     // Сбрасываем статус через задержку
+  //     setTimeout(() => {
+  //       setSaveStatus('idle');
+  //     }, 2000);
+  //   }
+  // }, []);
 
   const recordPayment = (playerId: number, amount: number) => {
-    setState((prevState) => ({
-      ...prevState,
-      players: prevState.players.map((player) =>
-        player.id === playerId
-          ? { ...player, paidAmount: player.paidAmount + amount }
-          : player
-      ),
-    }));
+    // Проверяем, что playerId - это число
+    if (typeof playerId !== 'number' || isNaN(playerId)) {
+      console.error("Invalid player ID:", playerId);
+      return;
+    }
+    
+    // Проверяем, что amount - это число
+    const paymentAmount = Number(amount) || 0;
+    if (paymentAmount <= 0) {
+      console.error("Invalid payment amount:", amount);
+      return;
+    }
+    
+    setState((prevState) => {
+      // Проверяем, существует ли игрок
+      const playerExists = prevState.players.some(p => p.id === playerId);
+      if (!playerExists) {
+        console.error("Player not found:", playerId);
+        return prevState;
+      }
+      
+      return {
+        ...prevState,
+        players: prevState.players.map((player) =>
+          player.id === playerId
+            ? { ...player, paidAmount: (player.paidAmount || 0) + paymentAmount }
+            : player
+        ),
+        lastUpdated: Date.now()
+      };
+    });
   };
 
   // Add function to create a new tournament
@@ -826,6 +1279,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     lastSyncTime,
     saveStatus,
     updatePlayerName,
+    forceSave,
   };
 
   return (

@@ -36,8 +36,8 @@ export const RankingView: React.FC = () => {
   
   // Sort players by chips in descending order for ranking with null/undefined protection
   const sortedPlayers = [...(state.players || [])].sort((a, b) => {
-    const aChips = (a.initialChips || 0) + ((a.rebuys || 0) * (state.rebuyChips || 0)) + ((a.addons || 0) * (state.addonChips || 0));
-    const bChips = (b.initialChips || 0) + ((b.rebuys || 0) * (state.rebuyChips || 0)) + ((b.addons || 0) * (state.addonChips || 0));
+    const aChips = (a?.initialChips || 0) + ((a?.rebuys || 0) * (state.rebuyChips || 0)) + ((a?.addons || 0) * (state.addonChips || 0));
+    const bChips = (b?.initialChips || 0) + ((b?.rebuys || 0) * (state.rebuyChips || 0)) + ((b?.addons || 0) * (state.addonChips || 0));
     return bChips - aChips; // Sort in descending order
   });
 
@@ -89,21 +89,24 @@ export const RankingView: React.FC = () => {
             </TableHeader>
             <TableBody emptyContent="Нет зарегистрированных игроков">
               {sortedPlayers.map((player, index) => {
+                // Добавляем проверку на существование player
+                if (!player) return null;
+                
                 const totalChips = 
-                  player.initialChips + 
-                  (player.rebuys * state.rebuyChips) + 
-                  (player.addons * state.addonChips);
+                  (player.initialChips || 0) + 
+                  ((player.rebuys || 0) * (state.rebuyChips || 0)) + 
+                  ((player.addons || 0) * (state.addonChips || 0));
                   
                 return (
                   <TableRow key={player.id} className={player.isEliminated ? "opacity-60" : ""}>
                     <TableCell>{index + 1}</TableCell>
-                    <TableCell>{player.name}</TableCell>
+                    <TableCell>{player.name || "Неизвестный"}</TableCell>
                     <TableCell className="font-semibold">{totalChips.toLocaleString()}</TableCell>
                     <TableCell>
                       {player.isEliminated ? (
                         <span className="text-danger flex items-center gap-1">
                           <Icon icon="lucide:x-circle" className="text-sm" />
-                          Выбыл (#{player.eliminationOrder})
+                          Выбыл (#{player.eliminationOrder || '?'})
                         </span>
                       ) : (
                         <span className="text-success flex items-center gap-1">

@@ -25,7 +25,13 @@ export const useConfirmation = () => {
   });
 
   const confirm = (props: ConfirmationProps) => {
-    setConfig(props);
+    // Проверяем, что message - это строка
+    const safeProps = {
+      ...props,
+      message: typeof props.message === 'string' ? props.message : String(props.message)
+    };
+    
+    setConfig(safeProps);
     onOpen();
   };
 

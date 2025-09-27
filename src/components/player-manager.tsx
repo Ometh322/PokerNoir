@@ -63,91 +63,92 @@ export const PlayerManager: React.FC = () => {
     }
   };
 
-  const handleRemovePlayer = (player) => {
-    confirm({
-      title: "Удаление игрока",
-      message: `Вы уверены, что хотите удалить игрока "${player.name}" из турнира? Это действие нельзя отменить.`,
-      confirmLabel: "Удалить",
-      cancelLabel: "Отмена",
-      confirmColor: "danger",
-      icon: "lucide:trash-2",
-      onConfirm: () => removePlayer(player.id)
-    });
-  };
-
+  // Упрощаем обработчики действий с игроками
   const handleAddRebuy = (player) => {
-    confirm({
-      title: "Подтверждение ребая",
-      message: `Добавить ребай для игрока "${player.name}"? Будет добавлено ${state.rebuyChips.toLocaleString()} фишек.`,
-      confirmLabel: "Добавить ребай",
-      cancelLabel: "Отмена",
-      confirmColor: "primary",
-      icon: "lucide:refresh-cw",
-      onConfirm: () => {
-        console.log("Adding rebuy for player", player.id);
-        addRebuy(player.id);
-      }
-    });
+    if (!player || !player.id) return;
+    
+    // Вызываем функцию напрямую без диалога подтверждения
+    addRebuy(player.id);
   };
 
   const handleAddAddon = (player) => {
-    confirm({
-      title: "Подтверждение аддона",
-      message: `Добавить аддон для игрока "${player.name}"? Будет добавлено ${state.addonChips.toLocaleString()} фишек.`,
-      confirmLabel: "Добавить аддон",
-      cancelLabel: "Отмена",
-      confirmColor: "secondary",
-      icon: "lucide:plus-circle",
-      onConfirm: () => {
-        console.log("Adding addon for player", player.id);
-        addAddon(player.id);
-      }
-    });
+    if (!player || !player.id) return;
+    
+    // Вызываем функцию напрямую без диалога подтверждения
+    addAddon(player.id);
   };
 
   const handleEliminatePlayer = (player) => {
-    confirm({
-      title: "Подтверждение выбывания",
-      message: `Отметить игрока "${player.name}" как выбывшего из турнира?`,
-      confirmLabel: "Подтвердить выбывание",
-      cancelLabel: "Отмена",
-      confirmColor: "danger",
-      icon: "lucide:x-circle",
-      onConfirm: () => {
-        console.log("Eliminating player", player.id);
-        eliminatePlayer(player.id);
-      }
-    });
+    // Добавляем проверки на существование player и его id
+    if (!player) {
+      console.error("Player object is undefined");
+      return;
+    }
+    
+    if (typeof player.id !== 'number' || isNaN(player.id)) {
+      console.error("Invalid player ID:", player?.id);
+      return;
+    }
+    
+    // Вызываем функцию с проверенным ID
+    eliminatePlayer(player.id);
   };
 
-  const handleRevivePlayer = (player: Player) => {
-    confirm({
-      title: "Возвращение игрока",
-      message: `Вернуть игрока "${player.name}" в игру с ребаем? Будет добавлено ${state.rebuyChips.toLocaleString()} фишек.`,
-      confirmLabel: "Вернуть с ребаем",
-      cancelLabel: "Отмена",
-      confirmColor: "success",
-      icon: "lucide:undo",
-      onConfirm: () => revivePlayer(player.id)
-    });
+  const handleRevivePlayer = (player) => {
+    // Добавляем проверки на существование player и его id
+    if (!player) {
+      console.error("Player object is undefined");
+      return;
+    }
+    
+    if (typeof player.id !== 'number' || isNaN(player.id)) {
+      console.error("Invalid player ID:", player?.id);
+      return;
+    }
+    
+    // Вызываем функцию с проверенным ID
+    revivePlayer(player.id);
   };
 
-  const handleUpdateBounty = (player: Player, amount: number) => {
-    addBountyChips(player.id, amount);
+  const handleRemovePlayer = (player) => {
+    if (!player || !player.id) return;
+    
+    // Вызываем функцию напрямую без диалога подтверждения
+    removePlayer(player.id);
   };
 
-  const handleRecordPayment = (player: Player) => {
-    const amount = paymentAmount[player.id] || 0;
+  const handleUpdateBounty = (player, amount) => {
+    // Проверяем, что player - это объект и имеет необходимые свойства
+    if (!player || typeof player !== 'object' || !player.id) {
+      console.error("Invalid player object:", player);
+      return;
+    }
+    
+    // Проверяем, что amount - это число
+    const bountyAmount = Number(amount) || 0;
+    
+    // Передаем только ID игрока и числовое значение
+    addBountyChips(player.id, bountyAmount);
+  };
+
+  const handleRecordPayment = (player) => {
+    // Проверяем, что player - это объект и имеет необходимые свойства
+    if (!player || typeof player !== 'object' || !player.id) {
+      console.error("Invalid player object:", player);
+      return;
+    }
+    
+    const amount = Number(paymentAmount[player.id]) || 0;
     if (amount <= 0) {
       return;
     }
     
     const totalCost = 
-      state.entryFee + 
-      (player.rebuys * state.rebuyFee) + 
-      (player.addons * state.addonFee);
+      (state.entryFee || 0) + 
+      ((player.rebuys || 0) * (state.rebuyFee || 0)) + 
+      ((player.addons || 0) * (state.addonFee || 0));
     
-    const remainingToPay = totalCost - player.paidAmount;
+    const remainingToPay = totalCost - (player.paidAmount || 0);
     
     if (amount > remainingToPay) {
       confirm({
@@ -158,6 +159,7 @@ export const PlayerManager: React.FC = () => {
         confirmColor: "warning",
         icon: "lucide:alert-triangle",
         onConfirm: () => {
+          // Передаем только ID игрока и числовое значение
           recordPayment(player.id, remainingToPay);
           setPaymentAmount(prev => ({...prev, [player.id]: 0}));
         }
@@ -165,12 +167,13 @@ export const PlayerManager: React.FC = () => {
     } else {
       confirm({
         title: "Подтверждение оплаты",
-        message: `Внести оплату ${amount} руб. для игрока "${player.name}"?`,
+        message: `Внести оплату ${amount} руб. для игрока "${player.name || 'Неизвестный'}"?`,
         confirmLabel: "Подтвердить",
         cancelLabel: "Отмена",
         confirmColor: "success",
         icon: "lucide:credit-card",
         onConfirm: () => {
+          // Передаем только ID игрока и числовое значение
           recordPayment(player.id, amount);
           setPaymentAmount(prev => ({...prev, [player.id]: 0}));
         }
@@ -284,76 +287,25 @@ export const PlayerManager: React.FC = () => {
               <TableHeader>
                 <TableColumn>Игрок</TableColumn>
                 <TableColumn>Фишки</TableColumn>
-                <TableColumn>Баунти</TableColumn>
-                <TableColumn>Оплата</TableColumn>
                 <TableColumn>Статус</TableColumn>
                 <TableColumn>Действия</TableColumn>
               </TableHeader>
               <TableBody emptyContent="Нет зарегистрированных игроков">
                 {(state.players || []).map((player) => {
+                  // Проверяем, что player существует
+                  if (!player) return null;
+                  
                   const totalChips = 
                     (player.initialChips || 0) + 
                     ((player.rebuys || 0) * (state.rebuyChips || 0)) + 
                     ((player.addons || 0) * (state.addonChips || 0));
                     
-                  const totalCost = 
-                    (state.entryFee || 0) + 
-                    ((player.rebuys || 0) * (state.rebuyFee || 0)) + 
-                    ((player.addons || 0) * (state.addonFee || 0));
-                    
-                  const remainingToPay = totalCost - (player.paidAmount || 0);
-                    
                   return (
                     <TableRow key={player.id} className={player.isEliminated ? "opacity-60" : ""}>
                       <TableCell>
-                        {editingPlayerId === player.id ? (
-                          <div className="flex items-center gap-2">
-                            <Input
-                              size="sm"
-                              value={editPlayerName}
-                              onValueChange={setEditPlayerName}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") {
-                                  savePlayerName();
-                                } else if (e.key === "Escape") {
-                                  cancelEditingPlayerName();
-                                }
-                              }}
-                              autoFocus
-                            />
-                            <Button
-                              size="sm"
-                              isIconOnly
-                              color="success"
-                              variant="light"
-                              onPress={savePlayerName}
-                            >
-                              <Icon icon="lucide:check" size={16} />
-                            </Button>
-                            <Button
-                              size="sm"
-                              isIconOnly
-                              color="danger"
-                              variant="light"
-                              onPress={cancelEditingPlayerName}
-                            >
-                              <Icon icon="lucide:x" size={16} />
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <span>{player.name}</span>
-                            <Button
-                              size="sm"
-                              isIconOnly
-                              color="default"
-                              variant="light"
-                              onPress={() => handlePlayerNameClick(player)}
-                            >
-                              <Icon icon="lucide:edit-2" size={16} />
-                            </Button>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <span>{player.name}</span>
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div className="space-y-1">
@@ -363,93 +315,6 @@ export const PlayerManager: React.FC = () => {
                             Ребаи: {(player.rebuys || 0)} × {state.rebuyChips?.toLocaleString() || 0} | 
                             Аддоны: {(player.addons || 0)} × {state.addonChips?.toLocaleString() || 0}
                           </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <div className="font-semibold">{player.bountyChips || 0}</div>
-                          {!player.isEliminated && (
-                            <div className="flex items-center gap-1">
-                              <Button
-                                size="sm"
-                                isIconOnly
-                                color="danger"
-                                variant="flat"
-                                onPress={() => handleUpdateBounty(player, Math.max(0, (player.bountyChips || 0) - 1))}
-                              >
-                                <Icon icon="lucide:minus" />
-                              </Button>
-                              <Input
-                                type="number"
-                                size="sm"
-                                min={0}
-                                value={(player.bountyChips || 0).toString()}
-                                onValueChange={(value) => 
-                                  handleUpdateBounty(player, Number(value) || 0)
-                                }
-                                className="w-16"
-                              />
-                              <Button
-                                size="sm"
-                                isIconOnly
-                                color="success"
-                                variant="flat"
-                                onPress={() => handleUpdateBounty(player, (player.bountyChips || 0) + 1)}
-                              >
-                                <Icon icon="lucide:plus" />
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2">
-                            <div className="text-sm">
-                              <div className="font-medium">
-                                {remainingToPay > 0 ? (
-                                  <span className="text-danger">
-                                    Осталось: {remainingToPay.toLocaleString()}
-                                  </span>
-                                ) : (
-                                  <span className="text-success">Оплачено полностью</span>
-                                )}
-                              </div>
-                              <div className="text-xs text-default-500">
-                                Оплачено: {player.paidAmount?.toLocaleString() || 0} из {totalCost.toLocaleString()}
-                              </div>
-                            </div>
-                          </div>
-                          
-                          {remainingToPay > 0 && (
-                            <div className="flex items-center gap-1">
-                              <Input
-                                type="number"
-                                size="sm"
-                                min={1}
-                                max={remainingToPay}
-                                value={(paymentAmount[player.id] || remainingToPay).toString()}
-                                onValueChange={(value) => 
-                                  setPaymentAmount(prev => ({
-                                    ...prev, 
-                                    [player.id]: Number(value) || 0
-                                  }))
-                                }
-                                className="w-24"
-                                placeholder="Сумма"
-                              />
-                              <Button
-                                size="sm"
-                                color="success"
-                                variant="flat"
-                                onPress={() => handleRecordPayment(player)}
-                                isDisabled={(paymentAmount[player.id] || 0) <= 0}
-                                startContent={<Icon icon="lucide:credit-card" className="text-sm" />}
-                              >
-                                Оплата
-                              </Button>
-                            </div>
-                          )}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -466,9 +331,9 @@ export const PlayerManager: React.FC = () => {
                         )}
                       </TableCell>
                       <TableCell>
-                        <div className="flex flex-col gap-1">
-                          {!player.isEliminated ? (
-                            <div className="flex flex-wrap gap-1">
+                        <div className="flex flex-wrap gap-2">
+                          {!player.isEliminated && (
+                            <>
                               <Button 
                                 size="sm" 
                                 color="primary" 
@@ -493,16 +358,16 @@ export const PlayerManager: React.FC = () => {
                               >
                                 Выбыл
                               </Button>
-                            </div>
-                          ) : (
+                            </>
+                          )}
+                          {player.isEliminated && (
                             <Button 
                               size="sm" 
                               color="success" 
                               variant="flat"
                               onPress={() => handleRevivePlayer(player)}
-                              startContent={<Icon icon="lucide:undo" />}
                             >
-                              Вернуть с ребаем
+                              Вернуть
                             </Button>
                           )}
                           <Button 

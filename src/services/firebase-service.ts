@@ -53,6 +53,7 @@ interface DbTournament {
   data: TournamentState;
 }
 
+// Отключаем автоматическую синхронизацию с Firebase, чтобы исключить её влияние
 class FirebaseService {
   private static instance: FirebaseService;
   private isInitialized = false;
@@ -285,37 +286,44 @@ class FirebaseService {
 
   // Update the active tournament with improved error handling and logging
   public async updateActiveTournament(data: TournamentState): Promise<void> {
-    // Если уже идет обновление, добавляем в очередь
-    if (this.updateLock) {
-      console.log("Update locked, queueing update");
-      this.pendingUpdate = data;
+    // Сохраняем данные локально для резервной копии
+    try {
+      localStorage.setItem("tournamentState", JSON.stringify(data));
+    } catch (error) {
+      console.error("Failed to save to localStorage:", error);
+    }
+    
+    // Если Firebase не инициализирован, выходим
+    if (!database) {
+      console.log("Firebase not initialized, skipping update");
       return;
     }
     
-    this.updateLock = true;
+    // Обновляем время последнего обновления
+    this.lastUpdateTime = Date.now();
     
     try {
+      // Выполняем обновление немедленно
       await this.performUpdate(data);
-      this.lastUpdateTime = Date.now();
-      console.log("Tournament data successfully saved to Firebase");
-      
-      // Проверяем, есть ли отложенные обновления
-      if (this.pendingUpdate) {
-        const nextUpdate = this.pendingUpdate;
-        this.pendingUpdate = null;
-        await this.updateActiveTournament(nextUpdate);
-      }
+      console.log("Tournament data saved to Firebase");
     } catch (error) {
-      console.error("Failed to save tournament data to Firebase:", error);
+      console.error("Failed to save to Firebase:", error);
       
-      // Store failed update in localStorage for recovery
-      try {
-        localStorage.setItem('failedUpdate', JSON.stringify(data));
-      } catch (storageError) {
-        console.error("Failed to store update in localStorage:", storageError);
-      }
-    } finally {
-      this.updateLock = false;
+      // Сохраняем неудачное обновление для последующей повторной попытки
+      localStorage.setItem("failedUpdate", JSON.stringify(data));
+      
+      // Повторяем попытку через 5 секунд
+      setTimeout(async () => {
+        try {
+          await this.performUpdate(data);
+          console.log("Retry successful: Tournament data saved to Firebase");
+          localStorage.removeItem("failedUpdate");
+        } catch (retryError) {
+          console.error("Retry failed:", retryError);
+        }
+      }, 5000);
+      
+      throw error;
     }
   }
   
@@ -327,7 +335,7 @@ class FirebaseService {
     }
     
     try {
-      // Get the active tournament ID
+      // Получаем ID активного турнира
       const activeIdSnapshot = await get(ref(database, 'activeTournamentId'));
       const activeId = activeIdSnapshot.val();
       
@@ -338,26 +346,10 @@ class FirebaseService {
         return;
       }
       
-      // Ensure data has all required fields with defaults
-      const safeData = {
-        levels: data.levels || defaultState.levels,
-        currentLevelIndex: data.currentLevelIndex ?? defaultState.currentLevelIndex,
-        timeRemaining: data.timeRemaining ?? defaultState.timeRemaining,
-        isRunning: data.isRunning ?? defaultState.isRunning,
-        players: data.players || defaultState.players,
-        initialChips: data.initialChips ?? defaultState.initialChips,
-        rebuyChips: data.rebuyChips ?? defaultState.rebuyChips,
-        addonChips: data.addonChips ?? defaultState.addonChips,
-        eliminationCount: data.eliminationCount ?? defaultState.eliminationCount,
-        backgroundImage: data.backgroundImage ?? defaultState.backgroundImage,
-        clubLogo: data.clubLogo ?? defaultState.clubLogo,
-        entryFee: data.entryFee ?? defaultState.entryFee,
-        rebuyFee: data.rebuyFee ?? defaultState.rebuyFee,
-        addonFee: data.addonFee ?? defaultState.addonFee,
-        lastUpdated: data.lastUpdated ?? Date.now(),
-      };
+      // Проверяем, что данные содержат все необходимые поля
+      const safeData = this.ensureCompleteData(data);
       
-      // Update the tournament data with timestamp
+      // Обновляем данные турнира с временной меткой
       const updates = {
         [`tournaments/${activeId}/data`]: safeData,
         [`tournaments/${activeId}/lastUpdated`]: Date.now()
@@ -365,12 +357,48 @@ class FirebaseService {
       
       await update(ref(database), updates);
       
-      // Clear any stored failed updates
+      // Очищаем сохраненные неудачные обновления
       localStorage.removeItem('failedUpdate');
     } catch (error) {
       console.error("Error updating active tournament:", error);
-      throw error; // Re-throw to handle in the caller
+      throw error;
     }
+  }
+
+  // Добавляем метод для проверки полноты данных
+  private ensureCompleteData(data: TournamentState): TournamentState {
+    // Загружаем дефолтное состояние из localStorage или используем встроенное
+    let defaultState: TournamentState;
+    try {
+      const savedDefault = localStorage.getItem("defaultTournamentState");
+      if (savedDefault) {
+        defaultState = JSON.parse(savedDefault);
+      } else {
+        defaultState = this.defaultState;
+      }
+    } catch (error) {
+      console.error("Error loading default state:", error);
+      defaultState = this.defaultState;
+    }
+    
+    // Проверяем и заполняем все поля
+    return {
+      levels: data.levels || defaultState.levels || [],
+      currentLevelIndex: data.currentLevelIndex ?? defaultState.currentLevelIndex ?? 0,
+      timeRemaining: data.timeRemaining ?? defaultState.timeRemaining ?? 900,
+      isRunning: data.isRunning ?? defaultState.isRunning ?? false,
+      players: data.players || defaultState.players || [],
+      initialChips: data.initialChips ?? defaultState.initialChips ?? 10000,
+      rebuyChips: data.rebuyChips ?? defaultState.rebuyChips ?? 10000,
+      addonChips: data.addonChips ?? defaultState.addonChips ?? 15000,
+      eliminationCount: data.eliminationCount ?? defaultState.eliminationCount ?? 0,
+      backgroundImage: data.backgroundImage ?? defaultState.backgroundImage ?? null,
+      clubLogo: data.clubLogo ?? defaultState.clubLogo ?? null,
+      entryFee: data.entryFee ?? defaultState.entryFee ?? 1000,
+      rebuyFee: data.rebuyFee ?? defaultState.rebuyFee ?? 1000,
+      addonFee: data.addonFee ?? defaultState.addonFee ?? 1500,
+      lastUpdated: data.lastUpdated ?? Date.now(),
+    };
   }
 
   // Get all tournaments with error handling

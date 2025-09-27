@@ -102,6 +102,7 @@ export const TournamentView: React.FC = () => {
     );
   }
   
+  // Удаляем прямое отображение таймера и используем компонент Timer
   return (
     <div 
       className="p-4 md:p-6 min-h-[calc(100vh-120px)] relative"
@@ -205,22 +206,12 @@ export const TournamentView: React.FC = () => {
                   </div>
                 </div>
                 
-                {/* Larger Timer */}
-                <div className="relative">
-                  <Card className={`bg-content2 border-none shadow-none ${isPause ? "bg-secondary/10" : ""}`}>
-                    <div className="flex items-center justify-center h-40 md:h-48 lg:h-56">
-                      <div className={`text-6xl md:text-7xl lg:text-8xl font-bold timer-text ${isRunning ? (isPause ? 'text-secondary' : 'text-primary') : 'text-default-600'}`}>
-                        {formatTimeRemaining(state.timeRemaining)}
-                      </div>
-                    </div>
-                  </Card>
-                  <div className="h-2 lg:h-3 w-full bg-default-100 absolute bottom-0 left-0 right-0">
-                    <div 
-                      className={`h-full ${isPause ? "bg-secondary" : state.timeRemaining <= 60 ? "bg-danger" : state.timeRemaining <= 180 ? "bg-warning" : "bg-success"} transition-all duration-1000 ease-linear`}
-                      style={{ width: `${(state.timeRemaining % 60) / 60 * 100}%` }}
-                    />
-                  </div>
-                </div>
+                {/* Используем компонент Timer вместо прямого отображения */}
+                <Timer 
+                  seconds={state.timeRemaining} 
+                  isRunning={state.isRunning} 
+                  isPause={isPause}
+                />
                 
                 {isPause ? (
                   <div className="p-6 bg-content2 rounded-medium text-center">
