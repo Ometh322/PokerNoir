@@ -1,21 +1,13 @@
 import React from "react";
-import { 
-  Modal, 
-  ModalContent, 
-  ModalHeader, 
-  ModalBody, 
-  ModalFooter, 
-  Button, 
-  useDisclosure 
-} from "@heroui/react";
+import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, useDisclosure } from "@heroui/react";
 import { Icon } from "@iconify/react";
 
-interface ConfirmationOptions {
+interface ConfirmationProps {
   title: string;
   message: string;
   confirmLabel?: string;
   cancelLabel?: string;
-  confirmColor?: "primary" | "danger" | "success" | "warning";
+  confirmColor?: "primary" | "secondary" | "success" | "warning" | "danger";
   icon?: string;
   onConfirm: () => void;
   onCancel?: () => void;
@@ -23,27 +15,30 @@ interface ConfirmationOptions {
 
 export const useConfirmation = () => {
   const { isOpen, onOpen, onOpenChange, onClose } = useDisclosure();
-  const [options, setOptions] = React.useState<ConfirmationOptions>({
+  const [config, setConfig] = React.useState<ConfirmationProps>({
     title: "",
     message: "",
+    confirmLabel: "Подтвердить",
+    cancelLabel: "Отмена",
+    confirmColor: "primary",
     onConfirm: () => {},
   });
 
-  const confirm = (options: ConfirmationOptions) => {
-    setOptions(options);
+  const confirm = (props: ConfirmationProps) => {
+    setConfig(props);
     onOpen();
   };
 
   const handleConfirm = () => {
-    options.onConfirm();
     onClose();
+    config.onConfirm();
   };
 
   const handleCancel = () => {
-    if (options.onCancel) {
-      options.onCancel();
-    }
     onClose();
+    if (config.onCancel) {
+      config.onCancel();
+    }
   };
 
   const dialog = (
@@ -51,32 +46,19 @@ export const useConfirmation = () => {
       <ModalContent>
         {() => (
           <>
-            <ModalHeader className="flex gap-2 items-center">
-              {options.icon && (
-                <Icon 
-                  icon={options.icon} 
-                  className={`text-xl ${
-                    options.confirmColor === "danger" ? "text-danger" : 
-                    options.confirmColor === "success" ? "text-success" :
-                    options.confirmColor === "warning" ? "text-warning" :
-                    "text-primary"
-                  }`} 
-                />
-              )}
-              {options.title}
+            <ModalHeader className="flex items-center gap-2">
+              {config.icon && <Icon icon={config.icon} className="text-xl" />}
+              {config.title}
             </ModalHeader>
             <ModalBody>
-              <p>{options.message}</p>
+              <p>{config.message}</p>
             </ModalBody>
             <ModalFooter>
               <Button variant="flat" onPress={handleCancel}>
-                {options.cancelLabel || "Отмена"}
+                {config.cancelLabel}
               </Button>
-              <Button 
-                color={options.confirmColor || "primary"} 
-                onPress={handleConfirm}
-              >
-                {options.confirmLabel || "Подтвердить"}
+              <Button color={config.confirmColor} onPress={handleConfirm}>
+                {config.confirmLabel}
               </Button>
             </ModalFooter>
           </>

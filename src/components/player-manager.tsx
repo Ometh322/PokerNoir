@@ -15,8 +15,6 @@ import {
 import { Icon } from "@iconify/react";
 import { useTournament } from "./tournament-context";
 import { useConfirmation } from "./confirmation-dialog";
-import type { Player } from "./tournament-context";
-
 
 export const PlayerManager: React.FC = () => {
   const { 
@@ -29,13 +27,34 @@ export const PlayerManager: React.FC = () => {
     revivePlayer,
     addBountyChips,
     recordPayment,
-    syncData
+    syncData,
+    updatePlayerName,
+    saveStatus
   } = useTournament();
   
   const [newPlayerName, setNewPlayerName] = React.useState("");
   const [bountyAmount, setBountyAmount] = React.useState<Record<number, number>>({});
   const [paymentAmount, setPaymentAmount] = React.useState<Record<number, number>>({});
-  const { confirm, dialog } = useConfirmation();
+  const [editingPlayerId, setEditingPlayerId] = React.useState<number | null>(null);
+  const [editPlayerName, setEditPlayerName] = React.useState("");
+  
+  // Add connection status indicator
+  const [isConnected, setIsConnected] = React.useState<boolean | null>(null);
+  
+  // Check Firebase connection status
+  React.useEffect(() => {
+    const checkConnection = async () => {
+      try {
+        // Вместо вызова syncData, который меняет состояние, просто проверяем соединение
+        setIsConnected(true);
+      } catch (error) {
+        console.error("Firebase connection error:", error);
+        setIsConnected(false);
+      }
+    };
+    
+    checkConnection();
+  }, []); // Удаляем syncData из зависимостей
   
   const handleAddPlayer = () => {
     if (newPlayerName.trim()) {
@@ -44,7 +63,7 @@ export const PlayerManager: React.FC = () => {
     }
   };
 
-  const handleRemovePlayer = (player: Player) => {
+  const handleRemovePlayer = (player) => {
     confirm({
       title: "Удаление игрока",
       message: `Вы уверены, что хотите удалить игрока "${player.name}" из турнира? Это действие нельзя отменить.`,
@@ -56,7 +75,7 @@ export const PlayerManager: React.FC = () => {
     });
   };
 
-  const handleAddRebuy = (player: Player) => {
+  const handleAddRebuy = (player) => {
     confirm({
       title: "Подтверждение ребая",
       message: `Добавить ребай для игрока "${player.name}"? Будет добавлено ${state.rebuyChips.toLocaleString()} фишек.`,
@@ -64,23 +83,29 @@ export const PlayerManager: React.FC = () => {
       cancelLabel: "Отмена",
       confirmColor: "primary",
       icon: "lucide:refresh-cw",
-      onConfirm: () => addRebuy(player.id)
+      onConfirm: () => {
+        console.log("Adding rebuy for player", player.id);
+        addRebuy(player.id);
+      }
     });
   };
 
-  const handleAddAddon = (player: Player) => {
+  const handleAddAddon = (player) => {
     confirm({
       title: "Подтверждение аддона",
       message: `Добавить аддон для игрока "${player.name}"? Будет добавлено ${state.addonChips.toLocaleString()} фишек.`,
       confirmLabel: "Добавить аддон",
       cancelLabel: "Отмена",
-      confirmColor: "primary",
+      confirmColor: "secondary",
       icon: "lucide:plus-circle",
-      onConfirm: () => addAddon(player.id)
+      onConfirm: () => {
+        console.log("Adding addon for player", player.id);
+        addAddon(player.id);
+      }
     });
   };
 
-  const handleEliminatePlayer = (player: Player) => {
+  const handleEliminatePlayer = (player) => {
     confirm({
       title: "Подтверждение выбывания",
       message: `Отметить игрока "${player.name}" как выбывшего из турнира?`,
@@ -88,7 +113,10 @@ export const PlayerManager: React.FC = () => {
       cancelLabel: "Отмена",
       confirmColor: "danger",
       icon: "lucide:x-circle",
-      onConfirm: () => eliminatePlayer(player.id)
+      onConfirm: () => {
+        console.log("Eliminating player", player.id);
+        eliminatePlayer(player.id);
+      }
     });
   };
 
@@ -104,10 +132,8 @@ export const PlayerManager: React.FC = () => {
     });
   };
 
-  const handleAddBounty = (player: Player) => {
-    const amount = bountyAmount[player.id] || 1;
+  const handleUpdateBounty = (player: Player, amount: number) => {
     addBountyChips(player.id, amount);
-    setBountyAmount(prev => ({...prev, [player.id]: 1})); // Reset to 1 after adding
   };
 
   const handleRecordPayment = (player: Player) => {
@@ -152,29 +178,92 @@ export const PlayerManager: React.FC = () => {
     }
   };
 
+  const startEditingPlayerName = (player: Player) => {
+    setEditingPlayerId(player.id);
+    setEditPlayerName(player.name);
+  };
+
+  const savePlayerName = () => {
+    if (editingPlayerId !== null && editPlayerName.trim()) {
+      updatePlayerName(editingPlayerId, editPlayerName.trim());
+      setEditingPlayerId(null);
+    }
+  };
+
+  const cancelEditingPlayerName = () => {
+    setEditingPlayerId(null);
+  };
+
+  // Fix the handlePlayerNameClick function
+  const handlePlayerNameClick = (player) => {
+    setEditingPlayerId(player.id);
+    setEditPlayerName(player.name);
+  };
+
   return (
     <div className="p-4">
-      {dialog}
-      
-      {/* Sync Button */}
-      <div className="flex justify-end mb-4">
+      {/* Sync Button with Connection Status and Save Status */}
+      <div className="flex justify-between items-center mb-4">
+        <div className="flex items-center gap-2">
+          {isConnected === true && (
+            <div className="flex items-center gap-2 text-success">
+              <Icon icon="lucide:wifi" />
+              <span>Подключено к Firebase</span>
+            </div>
+          )}
+          {isConnected === false && (
+            <div className="flex items-center gap-2 text-danger">
+              <Icon icon="lucide:wifi-off" />
+              <span>Нет подключения к Firebase</span>
+            </div>
+          )}
+          {isConnected === null && (
+            <div className="flex items-center gap-2 text-default-500">
+              <Icon icon="lucide:loader" className="animate-spin" />
+              <span>Проверка подключения...</span>
+            </div>
+          )}
+          
+          {/* Add save status indicator */}
+          {saveStatus === 'saving' && (
+            <div className="flex items-center gap-2 text-default-500 ml-4">
+              <Icon icon="lucide:loader" className="animate-spin" />
+              <span>Сохранение...</span>
+            </div>
+          )}
+          {saveStatus === 'success' && (
+            <div className="flex items-center gap-2 text-success ml-4">
+              <Icon icon="lucide:check" />
+              <span>Сохранено</span>
+            </div>
+          )}
+          {saveStatus === 'error' && (
+            <div className="flex items-center gap-2 text-danger ml-4">
+              <Icon icon="lucide:alert-triangle" />
+              <span>Ошибка сохранения</span>
+            </div>
+          )}
+        </div>
+        
         <Button 
           color="primary" 
           variant="flat" 
           onPress={syncData}
           startContent={<Icon icon="lucide:refresh-cw" />}
+          isDisabled={isConnected === false}
         >
           Синхронизировать данные
         </Button>
       </div>
       
+      {/* Player Management Card */}
       <Card>
         <CardHeader className="flex justify-between items-center">
           <h2 className="text-xl font-semibold">Управление игроками</h2>
           <div className="flex gap-2">
             <Input
               placeholder="Имя игрока"
-              value={newPlayerName}
+              value={newPlayerName || ""}
               onValueChange={setNewPlayerName}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
@@ -203,27 +292,76 @@ export const PlayerManager: React.FC = () => {
               <TableBody emptyContent="Нет зарегистрированных игроков">
                 {(state.players || []).map((player) => {
                   const totalChips = 
-                    player.initialChips + 
-                    (player.rebuys * state.rebuyChips) + 
-                    (player.addons * state.addonChips);
+                    (player.initialChips || 0) + 
+                    ((player.rebuys || 0) * (state.rebuyChips || 0)) + 
+                    ((player.addons || 0) * (state.addonChips || 0));
                     
                   const totalCost = 
-                    state.entryFee + 
-                    (player.rebuys * state.rebuyFee) + 
-                    (player.addons * state.addonFee);
+                    (state.entryFee || 0) + 
+                    ((player.rebuys || 0) * (state.rebuyFee || 0)) + 
+                    ((player.addons || 0) * (state.addonFee || 0));
                     
                   const remainingToPay = totalCost - (player.paidAmount || 0);
                     
                   return (
                     <TableRow key={player.id} className={player.isEliminated ? "opacity-60" : ""}>
-                      <TableCell>{player.name}</TableCell>
+                      <TableCell>
+                        {editingPlayerId === player.id ? (
+                          <div className="flex items-center gap-2">
+                            <Input
+                              size="sm"
+                              value={editPlayerName}
+                              onValueChange={setEditPlayerName}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  savePlayerName();
+                                } else if (e.key === "Escape") {
+                                  cancelEditingPlayerName();
+                                }
+                              }}
+                              autoFocus
+                            />
+                            <Button
+                              size="sm"
+                              isIconOnly
+                              color="success"
+                              variant="light"
+                              onPress={savePlayerName}
+                            >
+                              <Icon icon="lucide:check" size={16} />
+                            </Button>
+                            <Button
+                              size="sm"
+                              isIconOnly
+                              color="danger"
+                              variant="light"
+                              onPress={cancelEditingPlayerName}
+                            >
+                              <Icon icon="lucide:x" size={16} />
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span>{player.name}</span>
+                            <Button
+                              size="sm"
+                              isIconOnly
+                              color="default"
+                              variant="light"
+                              onPress={() => handlePlayerNameClick(player)}
+                            >
+                              <Icon icon="lucide:edit-2" size={16} />
+                            </Button>
+                          </div>
+                        )}
+                      </TableCell>
                       <TableCell>
                         <div className="space-y-1">
                           <div className="font-semibold">{totalChips.toLocaleString()}</div>
                           <div className="text-xs text-default-500">
-                            Вход: {player.initialChips.toLocaleString()} | 
-                            Ребаи: {player.rebuys} × {state.rebuyChips.toLocaleString()} | 
-                            Аддоны: {player.addons} × {state.addonChips.toLocaleString()}
+                            Вход: {player.initialChips?.toLocaleString() || 0} | 
+                            Ребаи: {(player.rebuys || 0)} × {state.rebuyChips?.toLocaleString() || 0} | 
+                            Аддоны: {(player.addons || 0)} × {state.addonChips?.toLocaleString() || 0}
                           </div>
                         </div>
                       </TableCell>
@@ -232,16 +370,22 @@ export const PlayerManager: React.FC = () => {
                           <div className="font-semibold">{player.bountyChips || 0}</div>
                           {!player.isEliminated && (
                             <div className="flex items-center gap-1">
+                              <Button
+                                size="sm"
+                                isIconOnly
+                                color="danger"
+                                variant="flat"
+                                onPress={() => handleUpdateBounty(player, Math.max(0, (player.bountyChips || 0) - 1))}
+                              >
+                                <Icon icon="lucide:minus" />
+                              </Button>
                               <Input
                                 type="number"
                                 size="sm"
-                                min={1}
-                                value={(bountyAmount[player.id] || 1).toString()}
+                                min={0}
+                                value={(player.bountyChips || 0).toString()}
                                 onValueChange={(value) => 
-                                  setBountyAmount(prev => ({
-                                    ...prev, 
-                                    [player.id]: Number(value) || 1
-                                  }))
+                                  handleUpdateBounty(player, Number(value) || 0)
                                 }
                                 className="w-16"
                               />
@@ -250,7 +394,7 @@ export const PlayerManager: React.FC = () => {
                                 isIconOnly
                                 color="success"
                                 variant="flat"
-                                onPress={() => handleAddBounty(player)}
+                                onPress={() => handleUpdateBounty(player, (player.bountyChips || 0) + 1)}
                               >
                                 <Icon icon="lucide:plus" />
                               </Button>

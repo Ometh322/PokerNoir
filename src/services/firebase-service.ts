@@ -59,6 +59,31 @@ class FirebaseService {
   private changeListeners: ((data: TournamentState) => void)[] = [];
   private activeListeners: { [path: string]: boolean } = {};
 
+  // Добавляем переменные для отслеживания обновлений
+  private pendingUpdate: TournamentState | null = null;
+  private updateDebounceTimer: NodeJS.Timeout | null = null;
+  private lastUpdateTime = 0;
+  private updateLock = false;
+  
+  // Добавляем константу для дефолтного состояния
+  private defaultState: TournamentState = {
+    levels: [],
+    currentLevelIndex: 0,
+    timeRemaining: 900,
+    isRunning: false,
+    players: [],
+    initialChips: 10000,
+    rebuyChips: 10000,
+    addonChips: 15000,
+    eliminationCount: 0,
+    backgroundImage: null,
+    clubLogo: null,
+    entryFee: 1000,
+    rebuyFee: 1000,
+    addonFee: 1500,
+    lastUpdated: Date.now(),
+  };
+
   private constructor() {}
 
   public static getInstance(): FirebaseService {
@@ -121,6 +146,12 @@ class FirebaseService {
       const tournament = snapshot.val() as DbTournament | null;
       
       if (tournament) {
+        // Проверяем, не является ли это обновление результатом нашего собственного изменения
+        if (tournament.data.lastUpdated <= this.lastUpdateTime) {
+          console.log("Ignoring own update");
+          return;
+        }
+        
         // Notify all listeners of the change
         this.changeListeners.forEach(listener => {
           try {
@@ -186,7 +217,7 @@ class FirebaseService {
   }
 
   // Get the active tournament with timeout
-  public async getActiveTournament(timeout = 5000): Promise<TournamentState | null> {
+  public async getActiveTournament(timeout = 15000): Promise<TournamentState | null> {
     await this.ensureInitialized();
     
     if (!database) return null;
@@ -199,70 +230,146 @@ class FirebaseService {
       
       // Create the actual operation promise
       const operationPromise = async () => {
-        // Get the active tournament ID
-        const activeIdSnapshot = await get(ref(database, 'activeTournamentId'));
-        const activeId = activeIdSnapshot.val();
-        
-        if (!activeId) return null;
-        
-        // Get the tournament data
-        const tournamentSnapshot = await get(ref(database, `tournaments/${activeId}`));
-        const tournament = tournamentSnapshot.val() as DbTournament | null;
-        
-        return tournament ? tournament.data : null;
+        try {
+          // Get the active tournament ID
+          const activeIdSnapshot = await get(ref(database, 'activeTournamentId'));
+          const activeId = activeIdSnapshot.val();
+          
+          if (!activeId) {
+            console.log("No active tournament ID found, creating a new one");
+            return null;
+          }
+          
+          // Get the tournament data
+          const tournamentSnapshot = await get(ref(database, `tournaments/${activeId}`));
+          const tournament = tournamentSnapshot.val() as DbTournament | null;
+          
+          if (!tournament) {
+            console.log(`Tournament with ID ${activeId} not found`);
+            return null;
+          }
+          
+          console.log(`Successfully retrieved tournament: ${tournament.name}`);
+          return tournament.data;
+        } catch (error) {
+          console.error("Error in operationPromise:", error);
+          throw error;
+        }
       };
       
       // Race the operation against the timeout
       return await Promise.race([operationPromise(), timeoutPromise]);
     } catch (error) {
       console.error("Error getting active tournament:", error);
+      
+      // Try to recover by checking if there's a locally stored active ID
+      try {
+        const localActiveId = localStorage.getItem('activeTournamentId');
+        if (localActiveId && database) {
+          console.log("Attempting recovery with locally stored tournament ID");
+          const tournamentSnapshot = await get(ref(database, `tournaments/${localActiveId}`));
+          const tournament = tournamentSnapshot.val() as DbTournament | null;
+          
+          if (tournament) {
+            console.log("Recovery successful");
+            return tournament.data;
+          }
+        }
+      } catch (recoveryError) {
+        console.error("Recovery attempt failed:", recoveryError);
+      }
+      
       return null;
     }
   }
 
-  // Update the active tournament with debounce
-  private updateDebounceTimer: NodeJS.Timeout | null = null;
-  private pendingUpdate: TournamentState | null = null;
-  
+  // Update the active tournament with improved error handling and logging
   public async updateActiveTournament(data: TournamentState): Promise<void> {
-    // Store the latest update
-    this.pendingUpdate = data;
-    
-    // Clear existing timer
-    if (this.updateDebounceTimer) {
-      clearTimeout(this.updateDebounceTimer);
+    // Если уже идет обновление, добавляем в очередь
+    if (this.updateLock) {
+      console.log("Update locked, queueing update");
+      this.pendingUpdate = data;
+      return;
     }
     
-    // Set a new timer
-    this.updateDebounceTimer = setTimeout(async () => {
-      if (!this.pendingUpdate) return;
+    this.updateLock = true;
+    
+    try {
+      await this.performUpdate(data);
+      this.lastUpdateTime = Date.now();
+      console.log("Tournament data successfully saved to Firebase");
       
-      await this.performUpdate(this.pendingUpdate);
-      this.pendingUpdate = null;
-    }, 300); // 300ms debounce
+      // Проверяем, есть ли отложенные обновления
+      if (this.pendingUpdate) {
+        const nextUpdate = this.pendingUpdate;
+        this.pendingUpdate = null;
+        await this.updateActiveTournament(nextUpdate);
+      }
+    } catch (error) {
+      console.error("Failed to save tournament data to Firebase:", error);
+      
+      // Store failed update in localStorage for recovery
+      try {
+        localStorage.setItem('failedUpdate', JSON.stringify(data));
+      } catch (storageError) {
+        console.error("Failed to store update in localStorage:", storageError);
+      }
+    } finally {
+      this.updateLock = false;
+    }
   }
   
   private async performUpdate(data: TournamentState): Promise<void> {
     await this.ensureInitialized();
     
-    if (!database) return;
+    if (!database) {
+      throw new Error("Firebase database not initialized");
+    }
     
     try {
       // Get the active tournament ID
       const activeIdSnapshot = await get(ref(database, 'activeTournamentId'));
       const activeId = activeIdSnapshot.val();
       
-      if (!activeId) return;
+      if (!activeId) {
+        console.log("No active tournament found, creating a new one");
+        const newId = await this.createTournament("Новый турнир", data);
+        console.log(`Created new tournament with ID: ${newId}`);
+        return;
+      }
+      
+      // Ensure data has all required fields with defaults
+      const safeData = {
+        levels: data.levels || defaultState.levels,
+        currentLevelIndex: data.currentLevelIndex ?? defaultState.currentLevelIndex,
+        timeRemaining: data.timeRemaining ?? defaultState.timeRemaining,
+        isRunning: data.isRunning ?? defaultState.isRunning,
+        players: data.players || defaultState.players,
+        initialChips: data.initialChips ?? defaultState.initialChips,
+        rebuyChips: data.rebuyChips ?? defaultState.rebuyChips,
+        addonChips: data.addonChips ?? defaultState.addonChips,
+        eliminationCount: data.eliminationCount ?? defaultState.eliminationCount,
+        backgroundImage: data.backgroundImage ?? defaultState.backgroundImage,
+        clubLogo: data.clubLogo ?? defaultState.clubLogo,
+        entryFee: data.entryFee ?? defaultState.entryFee,
+        rebuyFee: data.rebuyFee ?? defaultState.rebuyFee,
+        addonFee: data.addonFee ?? defaultState.addonFee,
+        lastUpdated: data.lastUpdated ?? Date.now(),
+      };
       
       // Update the tournament data with timestamp
       const updates = {
-        [`tournaments/${activeId}/data`]: data,
+        [`tournaments/${activeId}/data`]: safeData,
         [`tournaments/${activeId}/lastUpdated`]: Date.now()
       };
       
       await update(ref(database), updates);
+      
+      // Clear any stored failed updates
+      localStorage.removeItem('failedUpdate');
     } catch (error) {
       console.error("Error updating active tournament:", error);
+      throw error; // Re-throw to handle in the caller
     }
   }
 
@@ -334,6 +441,47 @@ class FirebaseService {
     }
   }
 
+  // Добавляем метод для принудительного удаления данных
+  public async forceDeleteTournament(id: string): Promise<boolean> {
+    await this.ensureInitialized();
+    
+    if (!database) return false;
+    
+    try {
+      // Принудительно удаляем турнир, игнорируя блокировки
+      await remove(ref(database, `tournaments/${id}`));
+      
+      // Проверяем, был ли это активный турнир
+      const activeIdSnapshot = await get(ref(database, 'activeTournamentId'));
+      const activeId = activeIdSnapshot.val();
+      
+      if (activeId === id) {
+        await set(ref(database, 'activeTournamentId'), null);
+      }
+      
+      return true;
+    } catch (error) {
+      console.error("Error force deleting tournament:", error);
+      return false;
+    }
+  }
+  
+  // Добавляем метод для сброса всех данных Firebase
+  public async resetAllData(): Promise<boolean> {
+    await this.ensureInitialized();
+    
+    if (!database) return false;
+    
+    try {
+      // Удаляем все данные
+      await set(ref(database), null);
+      return true;
+    } catch (error) {
+      console.error("Error resetting all Firebase data:", error);
+      return false;
+    }
+  }
+
   // Add a change listener
   public addChangeListener(listener: (data: TournamentState) => void): void {
     if (!this.changeListeners.includes(listener)) {
@@ -349,10 +497,25 @@ class FirebaseService {
     }
   }
 
-  // Private method to ensure the database is initialized
+  // Private method to ensure the database is initialized with retry
   private async ensureInitialized(): Promise<void> {
-    if (!this.isInitialized) {
-      await this.init();
+    if (this.isInitialized) return;
+    
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        await this.init();
+        return;
+      } catch (error) {
+        retries--;
+        if (retries === 0) {
+          console.error("Failed to initialize Firebase after multiple attempts:", error);
+          throw error;
+        }
+        console.log(`Initialization failed, retrying... (${retries} attempts left)`);
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
     }
   }
 }

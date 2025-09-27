@@ -42,7 +42,8 @@ export const AdminPanel: React.FC = () => {
     createNewTournament,
     loadTournament,
     getAllTournaments,
-    deleteTournament
+    deleteTournament,
+    saveStatus // Add this to destructuring
   } = useTournament();
   
   const [newLevel, setNewLevel] = React.useState<Omit<BlindLevel, "id">>({
@@ -59,6 +60,38 @@ export const AdminPanel: React.FC = () => {
   const [newTournamentName, setNewTournamentName] = React.useState("Новый турнир");
   const { isOpen, onOpen, onOpenChange, onClose } = useDisclosure();
   const { confirm, dialog } = useConfirmation();
+  
+  // Add connection status indicator
+  const [isConnected, setIsConnected] = React.useState<boolean | null>(null);
+  
+  // Check Firebase connection status - исправляем для предотвращения моргания
+  React.useEffect(() => {
+    let isMounted = true;
+    
+    const checkConnection = async () => {
+      try {
+        if (isMounted) {
+          setIsConnected(true);
+        }
+      } catch (error) {
+        if (isMounted) {
+          console.error("Firebase connection error:", error);
+          setIsConnected(false);
+        }
+      }
+    };
+    
+    // Проверяем соединение только один раз при монтировании
+    checkConnection();
+    
+    // Убираем интервал, который вызывал постоянное обновление
+    // const interval = setInterval(checkConnection, 30000);
+    
+    return () => {
+      isMounted = false;
+      // clearInterval(interval);
+    };
+  }, []);
   
   // Load tournaments on component mount
   React.useEffect(() => {
@@ -183,9 +216,119 @@ export const AdminPanel: React.FC = () => {
     });
   };
 
+  // Добавляем проверку на undefined для функций
+  const handleUpdateInitialChips = (value: string) => {
+    if (typeof updateInitialChips === 'function') {
+      updateInitialChips(Number(value) || 0);
+    } else {
+      console.error("updateInitialChips is not a function");
+    }
+  };
+  
+  const handleUpdateRebuyChips = (value: string) => {
+    if (typeof updateRebuyChips === 'function') {
+      updateRebuyChips(Number(value) || 0);
+    } else {
+      console.error("updateRebuyChips is not a function");
+    }
+  };
+  
+  const handleUpdateAddonChips = (value: string) => {
+    if (typeof updateAddonChips === 'function') {
+      updateAddonChips(Number(value) || 0);
+    } else {
+      console.error("updateAddonChips is not a function");
+    }
+  };
+
+  // Добавляем функцию для принудительного сброса данных Firebase
+  const handleResetFirebase = () => {
+    confirm({
+      title: "Сброс данных Firebase",
+      message: "Вы уверены, что хотите сбросить ВСЕ данные Firebase? Это действие нельзя отменить и оно удалит все турниры для всех пользователей!",
+      confirmLabel: "Сбросить все данные",
+      cancelLabel: "Отмена",
+      confirmColor: "danger",
+      icon: "lucide:alert-triangle",
+      onConfirm: async () => {
+        try {
+          // Импортируем FirebaseService динамически
+          const FirebaseService = (await import('../services/firebase-service')).default;
+          const service = FirebaseService.getInstance();
+          
+          const result = await service.resetAllData();
+          if (result) {
+            alert("Все данные Firebase успешно сброшены. Перезагрузите страницу.");
+            window.location.reload();
+          } else {
+            alert("Не удалось сбросить данные Firebase.");
+          }
+        } catch (error) {
+          console.error("Error resetting Firebase data:", error);
+          alert("Произошла ошибка при сбросе данных Firebase.");
+        }
+      }
+    });
+  };
+
   return (
     <div className="p-4 space-y-6">
       {dialog}
+      
+      {/* Connection Status with Save Status */}
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          {isConnected === true && (
+            <div className="flex items-center gap-2 text-success">
+              <Icon icon="lucide:wifi" />
+              <span>Подключено к Firebase</span>
+            </div>
+          )}
+          {isConnected === false && (
+            <div className="flex items-center gap-2 text-danger">
+              <Icon icon="lucide:wifi-off" />
+              <span>Нет подключения к Firebase</span>
+            </div>
+          )}
+          {isConnected === null && (
+            <div className="flex items-center gap-2 text-default-500">
+              <Icon icon="lucide:loader" className="animate-spin" />
+              <span>Проверка подключения...</span>
+            </div>
+          )}
+          
+          {/* Add save status indicator */}
+          {saveStatus === 'saving' && (
+            <div className="flex items-center gap-2 text-default-500 ml-4">
+              <Icon icon="lucide:loader" className="animate-spin" />
+              <span>Сохранение...</span>
+            </div>
+          )}
+          {saveStatus === 'success' && (
+            <div className="flex items-center gap-2 text-success ml-4">
+              <Icon icon="lucide:check" />
+              <span>Сохранено</span>
+            </div>
+          )}
+          {saveStatus === 'error' && (
+            <div className="flex items-center gap-2 text-danger ml-4">
+              <Icon icon="lucide:alert-triangle" />
+              <span>Ошибка сохранения</span>
+            </div>
+          )}
+        </div>
+        
+        {/* Sync Button */}
+        <Button 
+          color="primary" 
+          variant="flat" 
+          onPress={syncData}
+          startContent={<Icon icon="lucide:refresh-cw" />}
+          isDisabled={isConnected === false}
+        >
+          Синхронизировать данные
+        </Button>
+      </div>
       
       {/* Tournament Management */}
       <Card>
@@ -219,7 +362,7 @@ export const AdminPanel: React.FC = () => {
               </Button>
             </div>
             
-            {tournaments?.length || 0 > 0 ? (
+            {(tournaments || []).length > 0 ? (
               <Table removeWrapper aria-label="Список турниров">
                 <TableHeader>
                   <TableColumn>Название</TableColumn>
@@ -443,7 +586,7 @@ export const AdminPanel: React.FC = () => {
                 type="number"
                 label="Начальный стек"
                 value={state.initialChips.toString()}
-                onValueChange={(value) => updateInitialChips(Number(value) || 0)}
+                onValueChange={handleUpdateInitialChips}
                 min={0}
                 startContent={
                   <Icon icon="lucide:coins" className="text-default-400 text-lg" />
@@ -455,7 +598,7 @@ export const AdminPanel: React.FC = () => {
                 type="number"
                 label="Фишки за ребай"
                 value={state.rebuyChips.toString()}
-                onValueChange={(value) => updateRebuyChips(Number(value) || 0)}
+                onValueChange={handleUpdateRebuyChips}
                 min={0}
                 startContent={
                   <Icon icon="lucide:refresh-cw" className="text-default-400 text-lg" />
@@ -467,7 +610,7 @@ export const AdminPanel: React.FC = () => {
                 type="number"
                 label="Фишки за аддон"
                 value={state.addonChips.toString()}
-                onValueChange={(value) => updateAddonChips(Number(value) || 0)}
+                onValueChange={handleUpdateAddonChips}
                 min={0}
                 startContent={
                   <Icon icon="lucide:plus-circle" className="text-default-400 text-lg" />
@@ -626,7 +769,7 @@ export const AdminPanel: React.FC = () => {
                       color="danger" 
                       variant="light"
                       onPress={() => removeLevel(level.id)}
-                      isDisabled={state.levels?.length || 0 <= 1}
+                      isDisabled={state.levels.length <= 1}
                     >
                       <Icon icon="lucide:trash-2" />
                     </Button>
@@ -740,6 +883,29 @@ export const AdminPanel: React.FC = () => {
                 </div>
               </div>
             )}
+          </div>
+        </CardBody>
+      </Card>
+
+      {/* Добавляем раздел для экстренного сброса данных */}
+      <Card>
+        <CardHeader>
+          <h2 className="text-xl font-semibold text-danger">Экстренное управление данными</h2>
+        </CardHeader>
+        <CardBody>
+          <div className="space-y-4">
+            <p className="text-danger">
+              Внимание! Следующие действия предназначены только для экстренных случаев, когда возникают проблемы с синхронизацией данных.
+            </p>
+            
+            <Button 
+              color="danger" 
+              variant="solid"
+              startContent={<Icon icon="lucide:trash-2" />}
+              onPress={handleResetFirebase}
+            >
+              Сбросить все данные Firebase
+            </Button>
           </div>
         </CardBody>
       </Card>

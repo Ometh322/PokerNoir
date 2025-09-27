@@ -1,4 +1,4 @@
-import React, {useCallback } from "react";
+import React from "react";
 import FirebaseService from "../services/firebase-service";
 
 export interface BlindLevel {
@@ -66,9 +66,15 @@ interface TournamentContextType {
   updateEntryFee: (fee: number) => void;
   updateRebuyFee: (fee: number) => void;
   updateAddonFee: (fee: number) => void;
-  addBountyChips: (playerId: number, amount: number) => void;
-  syncData: () => void; // New function for manual sync
-  recordPayment: (playerId: number, amount: number) => void; // New function to record payments
+  addBountyChips: (playerId: number, amount: number) => void; // Ensure this is named correctly
+  syncData: () => Promise<void>; // Make sure it returns Promise<void>
+  recordPayment: (playerId: number, amount: number) => void;
+  createNewTournament: (name?: string) => Promise<string | null>;
+  loadTournament: (id: string) => Promise<boolean>;
+  getAllTournaments: () => Promise<Array<{id: string; name: string; createdAt: number}>>;
+  deleteTournament: (id: string) => Promise<boolean>;
+  isLoading: boolean;
+  lastSyncTime: number;
 }
 
 const defaultLevels: BlindLevel[] = [
@@ -138,6 +144,10 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [lastSyncTime, setLastSyncTime] = React.useState<number>(0);
   const timerRef = React.useRef<number | null>(null);
   const stateRef = React.useRef<TournamentState>(state);
+  const [saveStatus, setSaveStatus] = React.useState<'idle' | 'saving' | 'success' | 'error'>('idle');
+  const saveStatusTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  // Добавляем определение saveDebounceRef
+  const saveDebounceRef = React.useRef<NodeJS.Timeout | null>(null);
   
   // Update the ref whenever state changes
   React.useEffect(() => {
@@ -147,7 +157,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // Use ref for Firebase service to avoid recreation
   const firebaseService = React.useMemo(() => FirebaseService.getInstance(), []);
   
-  // Initialize Firebase and load active tournament
+  // Initialize Firebase and load active tournament with improved error handling
   React.useEffect(() => {
     let isMounted = true;
     
@@ -157,27 +167,67 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setIsLoading(true);
       try {
         await firebaseService.init();
-        const activeTournament = await firebaseService.getActiveTournament();
+        
+        // Try to load active tournament with increased timeout
+        const activeTournament = await firebaseService.getActiveTournament(20000); // 20 seconds timeout
         
         if (activeTournament && isMounted) {
           setState(activeTournament);
           setLastSyncTime(Date.now());
         } else if (isMounted) {
-          // If no active tournament, create a new one
-          try {
-            const newState = {
-              ...defaultState,
-              lastUpdated: Date.now()
-            };
-            
-            await firebaseService.createTournament("Новый турнир", newState);
-            setState(newState);
-          } catch (error) {
-            console.error("Failed to create new tournament:", error);
+          // Check for failed updates in localStorage
+          const failedUpdate = localStorage.getItem('failedUpdate');
+          if (failedUpdate) {
+            try {
+              const parsedUpdate = JSON.parse(failedUpdate);
+              console.log("Restoring from failed update in localStorage");
+              setState(parsedUpdate);
+              // Try to save it again
+              await firebaseService.updateActiveTournament(parsedUpdate);
+            } catch (parseError) {
+              console.error("Failed to parse stored update:", parseError);
+              
+              // If no active tournament and no valid stored update, create a new one
+              try {
+                const newState = {
+                  ...defaultState,
+                  lastUpdated: Date.now()
+                };
+                
+                await firebaseService.createTournament("Новый турнир", newState);
+                setState(newState);
+              } catch (createError) {
+                console.error("Failed to create new tournament:", createError);
+              }
+            }
+          } else {
+            // If no active tournament and no stored update, create a new one
+            try {
+              const newState = {
+                ...defaultState,
+                lastUpdated: Date.now()
+              };
+              
+              await firebaseService.createTournament("Новый турнир", newState);
+              setState(newState);
+            } catch (createError) {
+              console.error("Failed to create new tournament:", createError);
+            }
           }
         }
       } catch (error) {
         console.error("Failed to initialize Firebase:", error);
+        
+        // Try to load from localStorage as fallback
+        try {
+          const savedState = localStorage.getItem("tournamentState");
+          if (savedState && isMounted) {
+            console.log("Loading from localStorage as fallback");
+            setState(JSON.parse(savedState));
+          }
+        } catch (fallbackError) {
+          console.error("Fallback loading failed:", fallbackError);
+        }
       } finally {
         if (isMounted) {
           setIsLoading(false);
@@ -195,6 +245,13 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (updatedData && updatedData.lastUpdated > stateRef.current.lastUpdated) {
         setState(updatedData);
         setLastSyncTime(Date.now());
+        
+        // Also save to localStorage as backup
+        try {
+          localStorage.setItem("tournamentState", JSON.stringify(updatedData));
+        } catch (storageError) {
+          console.error("Failed to save to localStorage:", storageError);
+        }
       }
     };
     
@@ -206,9 +263,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     };
   }, [firebaseService]);
 
-  // Save state to Firebase with debounce
-  const saveDebounceRef = React.useRef<NodeJS.Timeout | null>(null);
-  
+  // Save state to Firebase with improved error handling and status tracking
   React.useEffect(() => {
     if (isLoading) return;
     
@@ -216,6 +271,9 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (saveDebounceRef.current) {
       clearTimeout(saveDebounceRef.current);
     }
+    
+    // Set saving status
+    setSaveStatus('saving');
     
     // Set a new timeout
     saveDebounceRef.current = setTimeout(async () => {
@@ -226,15 +284,35 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       };
       
       try {
+        // Also save to localStorage as backup
+        try {
+          localStorage.setItem("tournamentState", JSON.stringify(stateWithTimestamp));
+        } catch (storageError) {
+          console.error("Failed to save to localStorage:", storageError);
+        }
+        
         await firebaseService.updateActiveTournament(stateWithTimestamp);
+        setSaveStatus('success');
+        
+        // Reset status after a delay
+        if (saveStatusTimeoutRef.current) {
+          clearTimeout(saveStatusTimeoutRef.current);
+        }
+        saveStatusTimeoutRef.current = setTimeout(() => {
+          setSaveStatus('idle');
+        }, 2000);
       } catch (error) {
         console.error("Failed to save tournament state:", error);
+        setSaveStatus('error');
       }
-    }, 500); // 500ms debounce
+    }, 800); // Increased debounce time to 800ms
     
     return () => {
       if (saveDebounceRef.current) {
         clearTimeout(saveDebounceRef.current);
+      }
+      if (saveStatusTimeoutRef.current) {
+        clearTimeout(saveStatusTimeoutRef.current);
       }
     };
   }, [state, firebaseService, isLoading]);
@@ -247,7 +325,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           if (prevState.timeRemaining <= 1) {
             // Time's up, move to next level
             const nextLevelIndex = prevState.currentLevelIndex + 1;
-            if (nextLevelIndex < prevState.levels?.length || 0) {
+            if (nextLevelIndex < prevState.levels.length) {
               return {
                 ...prevState,
                 currentLevelIndex: nextLevelIndex,
@@ -298,18 +376,18 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setState((prevState) => ({
       ...prevState,
       isRunning: false,
-      timeRemaining: prevState.levels[prevState.currentLevelIndex].duration * 60,
+      timeRemaining: (prevState.levels?.[prevState.currentLevelIndex]?.duration || 15) * 60,
     }));
   };
 
   const nextLevel = () => {
     setState((prevState) => {
-      const nextLevelIndex = prevState.currentLevelIndex + 1;
-      if (nextLevelIndex < prevState.levels?.length || 0) {
+      const nextLevelIndex = (prevState.currentLevelIndex || 0) + 1;
+      if (nextLevelIndex < (prevState.levels || []).length) {
         return {
           ...prevState,
           currentLevelIndex: nextLevelIndex,
-          timeRemaining: prevState.levels[nextLevelIndex].duration * 60,
+          timeRemaining: (prevState.levels?.[nextLevelIndex]?.duration || 15) * 60,
           isRunning: false,
         };
       }
@@ -319,12 +397,12 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const previousLevel = () => {
     setState((prevState) => {
-      const prevLevelIndex = prevState.currentLevelIndex - 1;
+      const prevLevelIndex = (prevState.currentLevelIndex || 0) - 1;
       if (prevLevelIndex >= 0) {
         return {
           ...prevState,
           currentLevelIndex: prevLevelIndex,
-          timeRemaining: prevState.levels[prevLevelIndex].duration * 60,
+          timeRemaining: (prevState.levels?.[prevLevelIndex]?.duration || 15) * 60,
           isRunning: false,
         };
       }
@@ -335,7 +413,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const updateLevel = (id: number, levelUpdates: Partial<BlindLevel>) => {
     setState((prevState) => ({
       ...prevState,
-      levels: prevState.levels.map((level) =>
+      levels: (prevState.levels || []).map((level) =>
         level.id === id ? { ...level, ...levelUpdates } : level
       ),
     }));
@@ -343,10 +421,10 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const addLevel = (level: Omit<BlindLevel, "id">) => {
     setState((prevState) => {
-      const newId = Math.max(0, ...prevState.levels.map((l) => l.id)) + 1;
+      const newId = Math.max(0, ...(prevState.levels || []).map((l) => l.id || 0)) + 1;
       return {
         ...prevState,
-        levels: [...prevState.levels, { ...level, id: newId }].sort((a, b) => a.id - b.id),
+        levels: [...(prevState.levels || []), { ...level, id: newId }].sort((a, b) => (a.id || 0) - (b.id || 0)),
       };
     });
   };
@@ -354,14 +432,14 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const removeLevel = (id: number) => {
     setState((prevState) => ({
       ...prevState,
-      levels: prevState.levels?.filter((level) => level.id !== id) || [],
+      levels: (prevState.levels || []).filter((level) => level.id !== id),
     }));
   };
 
   const addPlayer = (name: string) => {
     setState((prevState) => {
-      const newId = (prevState.players || [])?.length || 0 > 0 
-        ? Math.max(...(prevState.players || []).map((p) => p.id)) + 1 
+      const newId = (prevState.players || []).length > 0 
+        ? Math.max(...(prevState.players || []).map((p) => p.id || 0)) + 1 
         : 1;
       return {
         ...prevState,
@@ -370,15 +448,16 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           { 
             id: newId, 
             name, 
-            initialChips: prevState.initialChips, 
+            initialChips: prevState.initialChips || 0, 
             rebuys: 0, 
             addons: 0,
             isEliminated: false,
             eliminationOrder: null,
             bountyChips: 0,
-            paidAmount: 0 // Initialize paid amount
+            paidAmount: 0
           },
         ],
+        lastUpdated: Date.now() // Add timestamp for Firebase sync
       };
     });
   };
@@ -386,64 +465,82 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const removePlayer = (id: number) => {
     setState((prevState) => ({
       ...prevState,
-      players: (prevState.players || [])?.filter((player) => player.id !== id) || [],
+      players: (prevState.players || []).filter((player) => player.id !== id),
+      lastUpdated: Date.now() // Add timestamp for Firebase sync
     }));
   };
 
+  // Исправляем функции для работы с игроками
   const addRebuy = (playerId: number) => {
-    setState((prevState) => ({
-      ...prevState,
-      players: (prevState.players || []).map((player) =>
-        player.id === playerId
-          ? { ...player, rebuys: player.rebuys + 1 }
-          : player
-      ),
-    }));
+    console.log("Adding rebuy for player", playerId);
+    setState((prevState) => {
+      // Находим игрока по ID
+      const player = prevState.players.find(p => p.id === playerId);
+      if (!player) {
+        console.error("Player not found:", playerId);
+        return prevState;
+      }
+      
+      return {
+        ...prevState,
+        players: prevState.players.map((p) =>
+          p.id === playerId
+            ? { ...p, rebuys: (p.rebuys || 0) + 1 }
+            : p
+        ),
+        lastUpdated: Date.now()
+      };
+    });
   };
 
   const addAddon = (playerId: number) => {
-    setState((prevState) => ({
-      ...prevState,
-      players: (prevState.players || []).map((player) =>
-        player.id === playerId
-          ? { ...player, addons: player.addons + 1 }
-          : player
-      ),
-    }));
-  };
-
-  const updateInitialChips = (chips: number) => {
-    setState((prevState) => ({
-      ...prevState,
-      initialChips: chips,
-    }));
-  };
-
-  const updateRebuyChips = (chips: number) => {
-    setState((prevState) => ({
-      ...prevState,
-      rebuyChips: chips,
-    }));
-  };
-
-  const updateAddonChips = (chips: number) => {
-    setState((prevState) => ({
-      ...prevState,
-      addonChips: chips,
-    }));
+    console.log("Adding addon for player", playerId);
+    setState((prevState) => {
+      // Находим игрока по ID
+      const player = prevState.players.find(p => p.id === playerId);
+      if (!player) {
+        console.error("Player not found:", playerId);
+        return prevState;
+      }
+      
+      return {
+        ...prevState,
+        players: prevState.players.map((p) =>
+          p.id === playerId
+            ? { ...p, addons: (p.addons || 0) + 1 }
+            : p
+        ),
+        lastUpdated: Date.now()
+      };
+    });
   };
 
   const eliminatePlayer = (playerId: number) => {
+    console.log("Eliminating player", playerId);
     setState((prevState) => {
-      const nextEliminationOrder = prevState.eliminationCount + 1;
+      // Находим игрока по ID
+      const player = prevState.players.find(p => p.id === playerId);
+      if (!player) {
+        console.error("Player not found:", playerId);
+        return prevState;
+      }
+      
+      // Если игрок уже выбыл, ничего не делаем
+      if (player.isEliminated) {
+        console.log("Player already eliminated");
+        return prevState;
+      }
+      
+      const nextEliminationOrder = (prevState.eliminationCount || 0) + 1;
       return {
         ...prevState,
         eliminationCount: nextEliminationOrder,
-        players: (prevState.players || []).map((player) =>
-          player.id === playerId && !player.isEliminated
-            ? { ...player, isEliminated: true, eliminationOrder: nextEliminationOrder }
-            : player
+        players: prevState.players.map((p) =>
+          p.id === playerId
+            ? { ...p, isEliminated: true, eliminationOrder: nextEliminationOrder }
+            : p
         ),
+        lastUpdated: Date.now()
       };
     });
   };
@@ -468,7 +565,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             ...player, 
             isEliminated: false, 
             eliminationOrder: null,
-            rebuys: player.rebuys + 1 
+            rebuys: (player.rebuys || 0) + 1 
           };
         } else if (player.eliminationOrder && eliminationOrder && player.eliminationOrder > eliminationOrder) {
           // Decrement elimination order for players eliminated after this one
@@ -482,7 +579,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       
       return {
         ...prevState,
-        eliminationCount: prevState.eliminationCount - 1,
+        eliminationCount: (prevState.eliminationCount || 0) - 1,
         players: updatedPlayers,
       };
     });
@@ -504,6 +601,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setState((prevState) => ({
       ...prevState,
       backgroundImage: imageUrl,
+      lastUpdated: Date.now() // Add timestamp for Firebase sync
     }));
   };
 
@@ -511,6 +609,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setState((prevState) => ({
       ...prevState,
       clubLogo: imageUrl,
+      lastUpdated: Date.now() // Add timestamp for Firebase sync
     }));
   };
 
@@ -540,33 +639,60 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       ...prevState,
       players: (prevState.players || []).map((player) =>
         player.id === playerId
-          ? { ...player, bountyChips: (player.bountyChips || 0) + amount }
+          ? { ...player, bountyChips: amount }
           : player
       ),
+      lastUpdated: Date.now() // Add timestamp for Firebase sync
     }));
   };
 
   // Manual sync function with timeout and error handling
-  const syncData = useCallback(async () => {
+  const syncData = async () => {
     try {
       setIsLoading(true);
-      const activeTournament = await firebaseService.getActiveTournament(10000); // 10s timeout
+      setSaveStatus('saving');
+      
+      // Try to get active tournament with increased timeout
+      const activeTournament = await firebaseService.getActiveTournament(30000); // 30s timeout
       
       if (activeTournament) {
         setState(activeTournament);
         setLastSyncTime(Date.now());
+        setSaveStatus('success');
+        
+        // Also save to localStorage as backup
+        try {
+          localStorage.setItem("tournamentState", JSON.stringify(activeTournament));
+        } catch (storageError) {
+          console.error("Failed to save to localStorage:", storageError);
+        }
+      } else {
+        // If no active tournament, try to create one with current state
+        try {
+          await firebaseService.createTournament(state.name || "Новый турнир", state);
+          setSaveStatus('success');
+        } catch (createError) {
+          console.error("Failed to create tournament during sync:", createError);
+          setSaveStatus('error');
+        }
       }
     } catch (error) {
       console.error("Failed to sync tournament state:", error);
+      setSaveStatus('error');
     } finally {
       setIsLoading(false);
+      
+      // Reset status after a delay
+      setTimeout(() => {
+        setSaveStatus('idle');
+      }, 2000);
     }
-  }, []);
+  };
 
   const recordPayment = (playerId: number, amount: number) => {
     setState((prevState) => ({
       ...prevState,
-      players: (prevState.players || []).map((player) =>
+      players: prevState.players.map((player) =>
         player.id === playerId
           ? { ...player, paidAmount: player.paidAmount + amount }
           : player
@@ -628,6 +754,42 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
+  const updatePlayerName = (playerId: number, name: string) => {
+    setState((prevState) => ({
+      ...prevState,
+      players: (prevState.players || []).map((player) =>
+        player.id === playerId
+          ? { ...player, name: name || player.name }
+          : player
+      ),
+      lastUpdated: Date.now() // Add timestamp for Firebase sync
+    }));
+  };
+
+  const updateInitialChips = (chips: number) => {
+    setState((prevState) => ({
+      ...prevState,
+      initialChips: chips,
+      lastUpdated: Date.now() // Add timestamp for Firebase sync
+    }));
+  };
+
+  const updateRebuyChips = (chips: number) => {
+    setState((prevState) => ({
+      ...prevState,
+      rebuyChips: chips,
+      lastUpdated: Date.now() // Add timestamp for Firebase sync
+    }));
+  };
+
+  const updateAddonChips = (chips: number) => {
+    setState((prevState) => ({
+      ...prevState,
+      addonChips: chips,
+      lastUpdated: Date.now() // Add timestamp for Firebase sync
+    }));
+  };
+
   const value = {
     state,
     startTimer,
@@ -662,6 +824,8 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     deleteTournament,
     isLoading,
     lastSyncTime,
+    saveStatus,
+    updatePlayerName,
   };
 
   return (

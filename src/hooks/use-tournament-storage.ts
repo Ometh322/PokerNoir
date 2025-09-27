@@ -1,4 +1,4 @@
-import type { TournamentState } from "../components/tournament-context";
+import { TournamentState } from "../components/tournament-context";
 
 // Remove or fix the safeRender function that's causing the error
 export const safeRender = (obj: any): string => {
@@ -111,7 +111,7 @@ export const useTournamentStorage = () => {
       
       // Update tournament list
       const tournamentList = getAllTournaments();
-      const updatedList = tournamentList?.filter(t => t.id !== id) || [];
+      const updatedList = tournamentList.filter(t => t.id !== id);
       localStorage.setItem("tournamentList", JSON.stringify(updatedList));
       
       return true;

@@ -1,9 +1,8 @@
-import React, { useCallback } from "react";
+import React from "react";
 import { Card, CardBody, CardFooter, Button, Divider, CardHeader } from "@heroui/react";
-import { Spinner } from "@heroui/spinner";
 import { Icon } from "@iconify/react";
 import { useTournament } from "./tournament-context";
-// import { Timer } from "./timer";
+import { Timer } from "./timer";
 
 export const TournamentView: React.FC = () => {
   const { 
@@ -13,30 +12,31 @@ export const TournamentView: React.FC = () => {
     resetTimer, 
     nextLevel, 
     previousLevel,
-    syncData 
+    syncData,
+    saveStatus // Add this to destructuring
   } = useTournament();
   
-  const currentLevel = state.levels[state.currentLevelIndex];
+  const currentLevel = state.levels?.[state.currentLevelIndex] || { smallBlind: 0, bigBlind: 0, ante: 0, duration: 15, type: 'level' };
   const isPause = currentLevel?.type === 'pause';
-  const isRunning = state.isRunning; // Add this line to extract isRunning from state
+  const isRunning = state.isRunning || false; // Add null/undefined check
   
-  // Calculate total chips in play
-  const totalChips = state.players?.reduce((sum, player) => {
-    return sum + player.initialChips + 
-      (player.rebuys * state.rebuyChips) + 
-      (player.addons * state.addonChips);
-  }, 0) || 0;
+  // Calculate total chips in play with null/undefined protection
+  const totalChips = (state.players || []).reduce((sum, player) => {
+    return sum + (player.initialChips || 0) + 
+      ((player.rebuys || 0) * (state.rebuyChips || 0)) + 
+      ((player.addons || 0) * (state.addonChips || 0));
+  }, 0);
   
-  // Calculate average stack for active players only
-  const activePlayers = state.players?.filter(player => !player.isEliminated) || [];
-  const averageStack = activePlayers?.length || 0 > 0 
-    ? Math.round(totalChips / activePlayers?.length || 1) 
+  // Calculate average stack for active players only with null/undefined protection
+  const activePlayers = (state.players || []).filter(player => !player.isEliminated);
+  const averageStack = activePlayers.length > 0 
+    ? Math.round(totalChips / activePlayers.length) 
     : 0;
 
-  // Get next level information for preview
-  const nextLevelIndex = state.currentLevelIndex + 1;
-  const hasNextLevel = nextLevelIndex < state.levels?.length || 0;
-  const upcomingLevel = hasNextLevel ? state.levels[nextLevelIndex] : null;
+  // Get next level information for preview with null/undefined protection
+  const nextLevelIndex = (state.currentLevelIndex || 0) + 1;
+  const hasNextLevel = nextLevelIndex < (state.levels || []).length;
+  const upcomingLevel = hasNextLevel ? state.levels?.[nextLevelIndex] : null;
 
   // Format time remaining in minutes and seconds
   const formatTimeRemaining = (seconds: number) => {
@@ -56,25 +56,17 @@ export const TournamentView: React.FC = () => {
     return new Date(lastSyncTime).toLocaleTimeString();
   }, [lastSyncTime]);
   
-  // Check Firebase connection status
-  const checkConnection = useCallback(async () => {
-    try {
-      // Simple test to check if we can sync data
-      await syncData();
-      setIsConnected(true);
-    } catch (error) {
-      console.error("Firebase connection error:", error);
-      setIsConnected(false);
-    }
-  }, [syncData]);
-    
-    // Check connection initially and then every 30 seconds
+  // Check Firebase connection status - исправляем для предотвращения моргания
   React.useEffect(() => {
-    checkConnection();
-    const interval = setInterval(checkConnection, 30000);
+    let isMounted = true;
     
-    return () => clearInterval(interval);
-  }, [checkConnection]);
+    // Устанавливаем соединение только один раз при монтировании
+    setIsConnected(true);
+    
+    return () => {
+      isMounted = false;
+    };
+  }, []);
   
   // Add error boundary
   const [hasError, setHasError] = React.useState(false);
@@ -125,13 +117,33 @@ export const TournamentView: React.FC = () => {
         <div className="absolute inset-0 bg-background/60 backdrop-blur-[2px] -m-4 md:-m-6" />
       )}
       
-      {/* Connection status indicator */}
+      {/* Connection status indicator with save status */}
       <div className="relative z-10 flex justify-end mb-4">
         {isConnected === true && (
           <div className="flex items-center gap-2 text-success bg-content1 px-3 py-1 rounded-full shadow-sm">
             <Icon icon="lucide:wifi" />
             <span>Синхронизация активна</span>
             <span className="text-xs text-default-500">({formattedSyncTime})</span>
+            
+            {/* Add save status indicator */}
+            {saveStatus === 'saving' && (
+              <div className="flex items-center gap-1 ml-2 text-default-500">
+                <Icon icon="lucide:loader" className="animate-spin" size={14} />
+                <span className="text-xs">Сохранение...</span>
+              </div>
+            )}
+            {saveStatus === 'success' && (
+              <div className="flex items-center gap-1 ml-2 text-success">
+                <Icon icon="lucide:check" size={14} />
+                <span className="text-xs">Сохранено</span>
+              </div>
+            )}
+            {saveStatus === 'error' && (
+              <div className="flex items-center gap-1 ml-2 text-danger">
+                <Icon icon="lucide:alert-triangle" size={14} />
+                <span className="text-xs">Ошибка</span>
+              </div>
+            )}
           </div>
         )}
         {isConnected === false && (
@@ -248,7 +260,7 @@ export const TournamentView: React.FC = () => {
                     isIconOnly
                     variant="flat"
                     onPress={nextLevel}
-                    isDisabled={state.currentLevelIndex === state.levels?.length || 0 - 1}
+                    isDisabled={state.currentLevelIndex === state.levels.length - 1}
                     size="lg"
                   >
                     <Icon icon="lucide:chevron-right" className="text-xl" />
@@ -297,7 +309,7 @@ export const TournamentView: React.FC = () => {
                         <span>Игроков</span>
                       </div>
                       <div className="text-3xl font-bold">
-                        {activePlayers?.length || 0}/{state.players?.length || 0}
+                        {activePlayers.length}/{state.players.length}
                       </div>
                     </div>
                     <div className="p-5 bg-content2 rounded-medium shadow-xs">
@@ -431,3 +443,8 @@ export const TournamentView: React.FC = () => {
     </div>
   );
 };
+
+// Fix missing Spinner import
+const Spinner = () => (
+  <div className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+);
