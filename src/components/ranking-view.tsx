@@ -17,7 +17,7 @@ export const RankingView: React.FC = () => {
   });
 
   // Calculate total tournament value
-  const totalEntryFees = state.players.length * state.entryFee;
+  const totalEntryFees = state.players?.length || 0 * state.entryFee;
   const totalRebuyFees = state.players.reduce((sum, player) => sum + player.rebuys * state.rebuyFee, 0);
   const totalAddonFees = state.players.reduce((sum, player) => sum + player.addons * state.addonFee, 0);
   const totalTournamentValue = totalEntryFees + totalRebuyFees + totalAddonFees;
@@ -69,20 +69,20 @@ export const RankingView: React.FC = () => {
             <div className="p-4 bg-content2 rounded-medium text-center">
               <div className="text-sm text-default-600 mb-1">Входы</div>
               <div className="text-xl font-semibold">{totalEntryFees.toLocaleString()}</div>
-              <div className="text-xs text-default-500">{state.players.length} × {state.entryFee.toLocaleString()}</div>
+              <div className="text-xs text-default-500">{state.players?.length || 0} × {state.entryFee.toLocaleString()}</div>
             </div>
             <div className="p-4 bg-content2 rounded-medium text-center">
               <div className="text-sm text-default-600 mb-1">Ребаи</div>
               <div className="text-xl font-semibold">{totalRebuyFees.toLocaleString()}</div>
               <div className="text-xs text-default-500">
-                {state.players.reduce((sum, p) => sum + p.rebuys, 0)} × {state.rebuyFee.toLocaleString()}
+                {state.players?.reduce((sum, p) => sum + p.rebuys, 0) || 0} × {state.rebuyFee.toLocaleString()}
               </div>
             </div>
             <div className="p-4 bg-content2 rounded-medium text-center">
               <div className="text-sm text-default-600 mb-1">Аддоны</div>
               <div className="text-xl font-semibold">{totalAddonFees.toLocaleString()}</div>
               <div className="text-xs text-default-500">
-                {state.players.reduce((sum, p) => sum + p.addons, 0)} × {state.addonFee.toLocaleString()}
+                {state.players?.reduce((sum, p) => sum + p.addons, 0) || 0} × {state.addonFee.toLocaleString()}
               </div>
             </div>
           </div>
@@ -123,7 +123,7 @@ export const RankingView: React.FC = () => {
                   <TableRow key={player.id} className={player.isEliminated ? "opacity-70" : ""}>
                     <TableCell>
                       {player.isEliminated 
-                        ? `${state.players.length - player.eliminationOrder! + 1}` 
+                        ? `${state.players?.length || 0 - player.eliminationOrder! + 1}` 
                         : `${index + 1}`}
                     </TableCell>
                     <TableCell>

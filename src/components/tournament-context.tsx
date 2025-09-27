@@ -247,7 +247,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           if (prevState.timeRemaining <= 1) {
             // Time's up, move to next level
             const nextLevelIndex = prevState.currentLevelIndex + 1;
-            if (nextLevelIndex < prevState.levels.length) {
+            if (nextLevelIndex < prevState.levels?.length || 0) {
               return {
                 ...prevState,
                 currentLevelIndex: nextLevelIndex,
@@ -305,7 +305,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const nextLevel = () => {
     setState((prevState) => {
       const nextLevelIndex = prevState.currentLevelIndex + 1;
-      if (nextLevelIndex < prevState.levels.length) {
+      if (nextLevelIndex < prevState.levels?.length || 0) {
         return {
           ...prevState,
           currentLevelIndex: nextLevelIndex,
@@ -354,13 +354,13 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const removeLevel = (id: number) => {
     setState((prevState) => ({
       ...prevState,
-      levels: prevState.levels.filter((level) => level.id !== id),
+      levels: prevState.levels?.filter((level) => level.id !== id) || [],
     }));
   };
 
   const addPlayer = (name: string) => {
     setState((prevState) => {
-      const newId = prevState.players.length > 0 
+      const newId = prevState.players?.length || 0 > 0 
         ? Math.max(...prevState.players.map((p) => p.id)) + 1 
         : 1;
       return {
@@ -386,7 +386,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const removePlayer = (id: number) => {
     setState((prevState) => ({
       ...prevState,
-      players: prevState.players.filter((player) => player.id !== id),
+      players: prevState.players?.filter((player) => player.id !== id) || [],
     }));
   };
 

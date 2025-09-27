@@ -219,7 +219,7 @@ export const AdminPanel: React.FC = () => {
               </Button>
             </div>
             
-            {tournaments.length > 0 ? (
+            {tournaments?.length || 0 > 0 ? (
               <Table removeWrapper aria-label="Список турниров">
                 <TableHeader>
                   <TableColumn>Название</TableColumn>
@@ -626,7 +626,7 @@ export const AdminPanel: React.FC = () => {
                       color="danger" 
                       variant="light"
                       onPress={() => removeLevel(level.id)}
-                      isDisabled={state.levels.length <= 1}
+                      isDisabled={state.levels?.length || 0 <= 1}
                     >
                       <Icon icon="lucide:trash-2" />
                     </Button>

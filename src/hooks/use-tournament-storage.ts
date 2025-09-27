@@ -111,7 +111,7 @@ export const useTournamentStorage = () => {
       
       // Update tournament list
       const tournamentList = getAllTournaments();
-      const updatedList = tournamentList.filter(t => t.id !== id);
+      const updatedList = tournamentList?.filter(t => t.id !== id) || [];
       localStorage.setItem("tournamentList", JSON.stringify(updatedList));
       
       return true;

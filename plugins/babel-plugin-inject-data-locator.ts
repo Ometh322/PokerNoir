@@ -49,13 +49,13 @@ const createPluginLogic = (babel: {types: typeof BabelTypes}, options: CustomPlu
 
   const isCurrentlyInThreeJsContext = (): boolean => {
     return (
-      contextStack.length > 0 && contextStack[contextStack.length - 1]?.isThreeJsContext === true
+      contextStack?.length || 0 > 0 && contextStack[contextStack?.length || 0 - 1]?.isThreeJsContext === true
     );
   };
 
   const pushContext = (isThreeJs: boolean): void => {
     contextStack.push({
-      depth: contextStack.length,
+      depth: contextStack?.length || 0,
       isThreeJsContext: isThreeJs,
     });
   };

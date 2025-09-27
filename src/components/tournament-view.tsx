@@ -1,5 +1,6 @@
 import React from "react";
 import { Card, CardBody, CardFooter, Button, Divider, CardHeader } from "@heroui/react";
+import { Spinner } from "@heroui/spinner";
 import { Icon } from "@iconify/react";
 import { useTournament } from "./tournament-context";
 import { Timer } from "./timer";
@@ -11,7 +12,8 @@ export const TournamentView: React.FC = () => {
     pauseTimer, 
     resetTimer, 
     nextLevel, 
-    previousLevel 
+    previousLevel,
+    syncData 
   } = useTournament();
   
   const currentLevel = state.levels[state.currentLevelIndex];
@@ -19,21 +21,21 @@ export const TournamentView: React.FC = () => {
   const isRunning = state.isRunning; // Add this line to extract isRunning from state
   
   // Calculate total chips in play
-  const totalChips = state.players.reduce((sum, player) => {
+  const totalChips = state.players?.reduce((sum, player) => {
     return sum + player.initialChips + 
       (player.rebuys * state.rebuyChips) + 
       (player.addons * state.addonChips);
-  }, 0);
+  }, 0) || 0;
   
   // Calculate average stack for active players only
-  const activePlayers = state.players.filter(player => !player.isEliminated);
-  const averageStack = activePlayers.length > 0 
-    ? Math.round(totalChips / activePlayers.length) 
+  const activePlayers = state.players?.filter(player => !player.isEliminated) || [];
+  const averageStack = activePlayers?.length || 0 > 0 
+    ? Math.round(totalChips / activePlayers?.length || 1) 
     : 0;
 
   // Get next level information for preview
   const nextLevelIndex = state.currentLevelIndex + 1;
-  const hasNextLevel = nextLevelIndex < state.levels.length;
+  const hasNextLevel = nextLevelIndex < state.levels?.length || 0;
   const upcomingLevel = hasNextLevel ? state.levels[nextLevelIndex] : null;
 
   // Format time remaining in minutes and seconds
@@ -246,7 +248,7 @@ export const TournamentView: React.FC = () => {
                     isIconOnly
                     variant="flat"
                     onPress={nextLevel}
-                    isDisabled={state.currentLevelIndex === state.levels.length - 1}
+                    isDisabled={state.currentLevelIndex === state.levels?.length || 0 - 1}
                     size="lg"
                   >
                     <Icon icon="lucide:chevron-right" className="text-xl" />
@@ -295,7 +297,7 @@ export const TournamentView: React.FC = () => {
                         <span>Игроков</span>
                       </div>
                       <div className="text-3xl font-bold">
-                        {activePlayers.length}/{state.players.length}
+                        {activePlayers?.length || 0}/{state.players?.length || 0}
                       </div>
                     </div>
                     <div className="p-5 bg-content2 rounded-medium shadow-xs">
