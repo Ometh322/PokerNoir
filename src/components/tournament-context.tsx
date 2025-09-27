@@ -1,4 +1,4 @@
-import React from "react";
+import React, {useCallback } from "react";
 import FirebaseService from "../services/firebase-service";
 
 export interface BlindLevel {
@@ -360,13 +360,13 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const addPlayer = (name: string) => {
     setState((prevState) => {
-      const newId = prevState.players?.length || 0 > 0 
-        ? Math.max(...prevState.players.map((p) => p.id)) + 1 
+      const newId = (prevState.players || [])?.length || 0 > 0 
+        ? Math.max(...(prevState.players || []).map((p) => p.id)) + 1 
         : 1;
       return {
         ...prevState,
         players: [
-          ...prevState.players,
+          ...(prevState.players || []),
           { 
             id: newId, 
             name, 
@@ -386,14 +386,14 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const removePlayer = (id: number) => {
     setState((prevState) => ({
       ...prevState,
-      players: prevState.players?.filter((player) => player.id !== id) || [],
+      players: (prevState.players || [])?.filter((player) => player.id !== id) || [],
     }));
   };
 
   const addRebuy = (playerId: number) => {
     setState((prevState) => ({
       ...prevState,
-      players: prevState.players.map((player) =>
+      players: (prevState.players || []).map((player) =>
         player.id === playerId
           ? { ...player, rebuys: player.rebuys + 1 }
           : player
@@ -404,7 +404,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const addAddon = (playerId: number) => {
     setState((prevState) => ({
       ...prevState,
-      players: prevState.players.map((player) =>
+      players: (prevState.players || []).map((player) =>
         player.id === playerId
           ? { ...player, addons: player.addons + 1 }
           : player
@@ -439,7 +439,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return {
         ...prevState,
         eliminationCount: nextEliminationOrder,
-        players: prevState.players.map((player) =>
+        players: (prevState.players || []).map((player) =>
           player.id === playerId && !player.isEliminated
             ? { ...player, isEliminated: true, eliminationOrder: nextEliminationOrder }
             : player
@@ -451,7 +451,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const revivePlayer = (playerId: number) => {
     setState((prevState) => {
       // Find the player to revive
-      const playerToRevive = prevState.players.find(p => p.id === playerId);
+      const playerToRevive = (prevState.players || []).find(p => p.id === playerId);
       
       if (!playerToRevive || !playerToRevive.isEliminated) {
         return prevState;
@@ -461,7 +461,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const eliminationOrder = playerToRevive.eliminationOrder;
       
       // Update all players with higher elimination order
-      const updatedPlayers = prevState.players.map(player => {
+      const updatedPlayers = (prevState.players || []).map(player => {
         if (player.id === playerId) {
           // Revive this player and add a rebuy
           return { 
@@ -492,7 +492,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setState((prevState) => ({
       ...prevState,
       eliminationCount: 0,
-      players: prevState.players.map((player) => ({
+      players: (prevState.players || []).map((player) => ({
         ...player,
         isEliminated: false,
         eliminationOrder: null
@@ -538,7 +538,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const addBountyChips = (playerId: number, amount: number) => {
     setState((prevState) => ({
       ...prevState,
-      players: prevState.players.map((player) =>
+      players: (prevState.players || []).map((player) =>
         player.id === playerId
           ? { ...player, bountyChips: (player.bountyChips || 0) + amount }
           : player
@@ -547,7 +547,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   // Manual sync function with timeout and error handling
-  const syncData = async () => {
+  const syncData = useCallback(async () => {
     try {
       setIsLoading(true);
       const activeTournament = await firebaseService.getActiveTournament(10000); // 10s timeout
@@ -561,12 +561,12 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   const recordPayment = (playerId: number, amount: number) => {
     setState((prevState) => ({
       ...prevState,
-      players: prevState.players.map((player) =>
+      players: (prevState.players || []).map((player) =>
         player.id === playerId
           ? { ...player, paidAmount: player.paidAmount + amount }
           : player

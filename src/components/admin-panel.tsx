@@ -227,7 +227,7 @@ export const AdminPanel: React.FC = () => {
                   <TableColumn>Действия</TableColumn>
                 </TableHeader>
                 <TableBody>
-                  {tournaments.map((tournament) => (
+                  {(tournaments || []).map((tournament) => (
                     <TableRow key={tournament.id}>
                       <TableCell>{tournament.name}</TableCell>
                       <TableCell>
@@ -536,7 +536,7 @@ export const AdminPanel: React.FC = () => {
               <TableColumn>Действия</TableColumn>
             </TableHeader>
             <TableBody>
-              {state.levels.map((level) => (
+              {(state.levels || []).map((level) => (
                 <TableRow key={level.id} className={level.type === 'pause' ? "bg-content2/50" : ""}>
                   <TableCell>
                     {level.type === 'pause' 

@@ -1,9 +1,9 @@
-import React from "react";
+import React, { useCallback } from "react";
 import { Card, CardBody, CardFooter, Button, Divider, CardHeader } from "@heroui/react";
 import { Spinner } from "@heroui/spinner";
 import { Icon } from "@iconify/react";
 import { useTournament } from "./tournament-context";
-import { Timer } from "./timer";
+// import { Timer } from "./timer";
 
 export const TournamentView: React.FC = () => {
   const { 
@@ -57,24 +57,24 @@ export const TournamentView: React.FC = () => {
   }, [lastSyncTime]);
   
   // Check Firebase connection status
-  React.useEffect(() => {
-    const checkConnection = async () => {
-      try {
-        // Simple test to check if we can sync data
-        await syncData();
-        setIsConnected(true);
-      } catch (error) {
-        console.error("Firebase connection error:", error);
-        setIsConnected(false);
-      }
-    };
+  const checkConnection = useCallback(async () => {
+    try {
+      // Simple test to check if we can sync data
+      await syncData();
+      setIsConnected(true);
+    } catch (error) {
+      console.error("Firebase connection error:", error);
+      setIsConnected(false);
+    }
+  }, [syncData]);
     
     // Check connection initially and then every 30 seconds
+  React.useEffect(() => {
     checkConnection();
     const interval = setInterval(checkConnection, 30000);
     
     return () => clearInterval(interval);
-  }, [syncData]);
+  }, [checkConnection]);
   
   // Add error boundary
   const [hasError, setHasError] = React.useState(false);

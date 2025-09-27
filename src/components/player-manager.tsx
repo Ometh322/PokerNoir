@@ -201,7 +201,7 @@ export const PlayerManager: React.FC = () => {
                 <TableColumn>Действия</TableColumn>
               </TableHeader>
               <TableBody emptyContent="Нет зарегистрированных игроков">
-                {state.players.map((player) => {
+                {(state.players || []).map((player) => {
                   const totalChips = 
                     player.initialChips + 
                     (player.rebuys * state.rebuyChips) + 
