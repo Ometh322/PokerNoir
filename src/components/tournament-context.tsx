@@ -1,4 +1,5 @@
 import React from "react";
+import DbService from "../services/db-service";
 
 export interface BlindLevel {
   id: number;
@@ -133,51 +134,75 @@ export const TournamentContext = React.createContext<TournamentContextType>({
 
 export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, setState] = React.useState<TournamentState>(defaultState);
+  const [isLoading, setIsLoading] = React.useState(true);
   const timerRef = React.useRef<number | null>(null);
-  const syncIntervalRef = React.useRef<number | null>(null);
-
-  // Load state from localStorage on initial render
+  const dbService = React.useMemo(() => DbService.getInstance(), []);
+  
+  // Initialize database and load active tournament
   React.useEffect(() => {
-    const loadState = () => {
-      const savedState = localStorage.getItem("tournamentState");
-      if (savedState) {
-        try {
-          const parsedState = JSON.parse(savedState);
-          setState(prevState => {
-            // Only update if the saved state is newer than the current state
-            if (!prevState.lastUpdated || parsedState.lastUpdated > prevState.lastUpdated) {
-              return parsedState;
+    const initDb = async () => {
+      setIsLoading(true);
+      try {
+        await dbService.init();
+        const activeTournament = await dbService.getActiveTournament();
+        
+        if (activeTournament) {
+          setState(activeTournament);
+        } else {
+          // If no active tournament, create a new one
+          const tournamentId = await dbService.createTournament(
+            "Новый турнир", 
+            {
+              ...defaultState,
+              lastUpdated: Date.now()
             }
-            return prevState;
-          });
-        } catch (e) {
-          console.error("Failed to parse saved tournament state", e);
+          );
+          console.log(`Created new tournament with ID: ${tournamentId}`);
         }
+      } catch (error) {
+        console.error("Failed to initialize database:", error);
+      } finally {
+        setIsLoading(false);
       }
     };
-
-    // Initial load
-    loadState();
-
-    // Set up periodic sync (every 2 seconds)
-    syncIntervalRef.current = window.setInterval(loadState, 2000);
-
+    
+    initDb();
+    
+    // Add change listener for database updates
+    const handleDbChange = (updatedData: TournamentState) => {
+      // Only update if the data is newer than our current state
+      if (updatedData.lastUpdated > state.lastUpdated) {
+        setState(updatedData);
+      }
+    };
+    
+    dbService.addChangeListener(handleDbChange);
+    
     return () => {
-      if (syncIntervalRef.current) {
-        clearInterval(syncIntervalRef.current);
+      dbService.removeChangeListener(handleDbChange);
+    };
+  }, [dbService]);
+
+  // Save state to database whenever it changes
+  React.useEffect(() => {
+    if (isLoading) return;
+    
+    const saveState = async () => {
+      // Add timestamp before saving
+      const stateWithTimestamp = {
+        ...state,
+        lastUpdated: Date.now()
+      };
+      
+      try {
+        await dbService.updateActiveTournament(stateWithTimestamp);
+      } catch (error) {
+        console.error("Failed to save tournament state:", error);
       }
     };
-  }, []);
-
-  // Save state to localStorage whenever it changes
-  React.useEffect(() => {
-    // Add timestamp before saving
-    const stateWithTimestamp = {
-      ...state,
-      lastUpdated: Date.now()
-    };
-    localStorage.setItem("tournamentState", JSON.stringify(stateWithTimestamp));
-  }, [state]);
+    
+    saveState();
+  }, [state, dbService, isLoading]);
 
   // Timer logic
   React.useEffect(() => {
@@ -503,6 +528,60 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }));
   };
 
+  // Add function to create a new tournament
+  const createNewTournament = async (name: string = "Новый турнир") => {
+    try {
+      const newState = {
+        ...defaultState,
+        lastUpdated: Date.now()
+      };
+      
+      const tournamentId = await dbService.createTournament(name, newState);
+      setState(newState);
+      
+      return tournamentId;
+    } catch (error) {
+      console.error("Failed to create new tournament:", error);
+      return null;
+    }
+  };
+
+  // Add function to load a tournament
+  const loadTournament = async (id: string) => {
+    try {
+      const tournamentData = await dbService.setActiveTournament(id);
+      if (tournamentData) {
+        setState(tournamentData);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error("Failed to load tournament:", error);
+      return false;
+    }
+  };
+
+  // Add function to get all tournaments
+  const getAllTournaments = async () => {
+    try {
+      return await dbService.getAllTournaments();
+    } catch (error) {
+      console.error("Failed to get all tournaments:", error);
+      return [];
+    }
+  };
+
+  // Add function to delete a tournament
+  const deleteTournament = async (id: string) => {
+    try {
+      await dbService.deleteTournament(id);
+      return true;
+    } catch (error) {
+      console.error("Failed to delete tournament:", error);
+      return false;
+    }
+  };
+
   const value = {
     state,
     startTimer,
@@ -531,6 +610,11 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     addBountyChips,
     syncData,
     recordPayment,
+    createNewTournament,
+    loadTournament,
+    getAllTournaments,
+    deleteTournament,
+    isLoading,
   };
 
   return (

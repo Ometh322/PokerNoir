@@ -7,11 +7,13 @@ export const RankingView: React.FC = () => {
   const { state, syncData } = useTournament();
   
   // Sort players by elimination order (active players first, then by elimination order)
+  // FIXED: Reverse the sorting order for eliminated players to show highest ranks first
   const sortedPlayers = [...state.players].sort((a, b) => {
     if (!a.isEliminated && !b.isEliminated) return 0;
     if (!a.isEliminated) return -1;
     if (!b.isEliminated) return 1;
-    return (a.eliminationOrder || 0) - (b.eliminationOrder || 0);
+    // Reverse the order: higher elimination order means better rank
+    return (b.eliminationOrder || 0) - (a.eliminationOrder || 0);
   });
 
   // Calculate total tournament value

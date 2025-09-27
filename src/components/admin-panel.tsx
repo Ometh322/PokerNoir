@@ -11,11 +11,18 @@ import {
   TableBody, 
   TableRow, 
   TableCell,
-  Divider
+  Divider,
+  Modal,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+  useDisclosure
 } from "@heroui/react";
 import { Icon } from "@iconify/react";
 import { useTournament } from "./tournament-context";
 import type { BlindLevel } from "./tournament-context";
+import { useConfirmation } from "./confirmation-dialog"; // Add this import
 
 export const AdminPanel: React.FC = () => {
   const { 
@@ -31,7 +38,11 @@ export const AdminPanel: React.FC = () => {
     updateEntryFee,
     updateRebuyFee,
     updateAddonFee,
-    syncData
+    syncData,
+    createNewTournament,
+    loadTournament,
+    getAllTournaments,
+    deleteTournament
   } = useTournament();
   
   const [newLevel, setNewLevel] = React.useState<Omit<BlindLevel, "id">>({
@@ -43,6 +54,21 @@ export const AdminPanel: React.FC = () => {
   });
   
   const [newItemType, setNewItemType] = React.useState<'level' | 'pause'>('level');
+  
+  const [tournaments, setTournaments] = React.useState<Array<{id: string; name: string; createdAt: number}>>([]);
+  const [newTournamentName, setNewTournamentName] = React.useState("Новый турнир");
+  const { isOpen, onOpen, onOpenChange, onClose } = useDisclosure();
+  const { confirm, dialog } = useConfirmation();
+  
+  // Load tournaments on component mount
+  React.useEffect(() => {
+    const loadTournaments = async () => {
+      const allTournaments = await getAllTournaments();
+      setTournaments(allTournaments);
+    };
+    
+    loadTournaments();
+  }, [getAllTournaments]);
   
   const handleAddLevel = () => {
     if (newItemType === 'level') {
@@ -107,8 +133,174 @@ export const AdminPanel: React.FC = () => {
     }
   };
 
+  const handleCreateNewTournament = async () => {
+    confirm({
+      title: "Создать новый турнир",
+      message: "Вы уверены, что хотите создать новый турнир? Все несохраненные данные текущего турнира будут потеряны.",
+      confirmLabel: "Создать",
+      cancelLabel: "Отмена",
+      confirmColor: "primary",
+      icon: "lucide:plus-circle",
+      onConfirm: async () => {
+        const tournamentId = await createNewTournament(newTournamentName);
+        if (tournamentId) {
+          // Refresh tournaments list
+          const allTournaments = await getAllTournaments();
+          setTournaments(allTournaments);
+        }
+      }
+    });
+  };
+  
+  const handleLoadTournament = async (id: string) => {
+    confirm({
+      title: "Загрузить турнир",
+      message: "Вы уверены, что хотите загрузить выбранный турнир? Все несохраненные данные текущего турнира будут потеряны.",
+      confirmLabel: "Загрузить",
+      cancelLabel: "Отмена",
+      confirmColor: "primary",
+      icon: "lucide:folder-open",
+      onConfirm: async () => {
+        await loadTournament(id);
+      }
+    });
+  };
+  
+  const handleDeleteTournament = async (id: string, name: string) => {
+    confirm({
+      title: "Удалить турнир",
+      message: `Вы уверены, что хотите удалить турнир "${name}"? Это действие нельзя отменить.`,
+      confirmLabel: "Удалить",
+      cancelLabel: "Отмена",
+      confirmColor: "danger",
+      icon: "lucide:trash-2",
+      onConfirm: async () => {
+        await deleteTournament(id);
+        // Refresh tournaments list
+        const allTournaments = await getAllTournaments();
+        setTournaments(allTournaments);
+      }
+    });
+  };
+
   return (
     <div className="p-4 space-y-6">
+      {dialog}
+      
+      {/* Tournament Management */}
+      <Card>
+        <CardHeader className="flex justify-between items-center">
+          <h2 className="text-xl font-semibold">Управление турнирами</h2>
+          <div className="flex gap-2">
+            <Button 
+              color="primary" 
+              onPress={onOpen}
+              startContent={<Icon icon="lucide:plus-circle" />}
+            >
+              Новый турнир
+            </Button>
+          </div>
+        </CardHeader>
+        <CardBody>
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-medium">Сохраненные турниры</h3>
+              <Button 
+                variant="flat" 
+                color="primary" 
+                size="sm"
+                startContent={<Icon icon="lucide:refresh-cw" />}
+                onPress={async () => {
+                  const allTournaments = await getAllTournaments();
+                  setTournaments(allTournaments);
+                }}
+              >
+                Обновить список
+              </Button>
+            </div>
+            
+            {tournaments.length > 0 ? (
+              <Table removeWrapper aria-label="Список турниров">
+                <TableHeader>
+                  <TableColumn>Название</TableColumn>
+                  <TableColumn>Дата создания</TableColumn>
+                  <TableColumn>Действия</TableColumn>
+                </TableHeader>
+                <TableBody>
+                  {tournaments.map((tournament) => (
+                    <TableRow key={tournament.id}>
+                      <TableCell>{tournament.name}</TableCell>
+                      <TableCell>
+                        {new Date(tournament.createdAt).toLocaleString()}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button 
+                            size="sm" 
+                            color="primary" 
+                            variant="flat"
+                            onPress={() => handleLoadTournament(tournament.id)}
+                          >
+                            <Icon icon="lucide:folder-open" className="mr-1" />
+                            Загрузить
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            color="danger" 
+                            variant="light"
+                            onPress={() => handleDeleteTournament(tournament.id, tournament.name)}
+                          >
+                            <Icon icon="lucide:trash-2" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <div className="text-center p-6 bg-content2 rounded-medium">
+                <Icon icon="lucide:database" className="text-4xl text-default-400 mb-2" />
+                <p className="text-default-600">Нет сохраненных турниров</p>
+              </div>
+            )}
+          </div>
+        </CardBody>
+      </Card>
+
+      {/* New Tournament Modal */}
+      <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
+        <ModalContent>
+          {(onClose) => (
+            <>
+              <ModalHeader>Создать новый турнир</ModalHeader>
+              <ModalBody>
+                <Input
+                  label="Название турнира"
+                  value={newTournamentName}
+                  onValueChange={setNewTournamentName}
+                  placeholder="Введите название турнира"
+                />
+              </ModalBody>
+              <ModalFooter>
+                <Button variant="flat" onPress={onClose}>
+                  Отмена
+                </Button>
+                <Button 
+                  color="primary" 
+                  onPress={() => {
+                    handleCreateNewTournament();
+                    onClose();
+                  }}
+                >
+                  Создать
+                </Button>
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
+      </Modal>
+      
       {/* Sync Button */}
       <div className="flex justify-end">
         <Button 
