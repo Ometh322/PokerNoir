@@ -1,7 +1,27 @@
-import { Low } from 'lowdb';
-// import { JSONFile } from 'lowdb/node'; // This is causing the error - Node.js specific
 import { v4 as uuidv4 } from 'uuid';
 import type { TournamentState } from '../components/tournament-context';
+
+// Add Low class definition since it's used but not imported
+class Low<T> {
+  adapter: any;
+  data: T | null;
+  
+  constructor(adapter: any, defaultData: T) {
+    this.adapter = adapter;
+    this.data = defaultData;
+  }
+  
+  async read() {
+    const data = await this.adapter.read();
+    this.data = data !== null ? data : this.data;
+  }
+  
+  async write() {
+    if (this.data) {
+      await this.adapter.write(this.data);
+    }
+  }
+}
 
 // Define the database schema
 interface DbData {

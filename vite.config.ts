@@ -25,7 +25,7 @@ export default defineConfig({
   },
   server: {
     host: '0.0.0.0', // Разрешаем подключения со всех IP
-    port: 5555, // Стандартный порт Vite
+    port: 3001, // Стандартный порт Vite
     strictPort: false // Разрешить использовать другой порт если 5173 занят
   }
 })

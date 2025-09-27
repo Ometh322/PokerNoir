@@ -43,6 +43,71 @@ export const TournamentView: React.FC = () => {
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
   };
 
+  // Add connection status indicator with last sync time
+  const [isConnected, setIsConnected] = React.useState<boolean | null>(null);
+  const { lastSyncTime } = useTournament();
+  
+  // Format the last sync time
+  const formattedSyncTime = React.useMemo(() => {
+    if (!lastSyncTime) return "Нет данных";
+    
+    return new Date(lastSyncTime).toLocaleTimeString();
+  }, [lastSyncTime]);
+  
+  // Check Firebase connection status
+  React.useEffect(() => {
+    const checkConnection = async () => {
+      try {
+        // Simple test to check if we can sync data
+        await syncData();
+        setIsConnected(true);
+      } catch (error) {
+        console.error("Firebase connection error:", error);
+        setIsConnected(false);
+      }
+    };
+    
+    // Check connection initially and then every 30 seconds
+    checkConnection();
+    const interval = setInterval(checkConnection, 30000);
+    
+    return () => clearInterval(interval);
+  }, [syncData]);
+  
+  // Add error boundary
+  const [hasError, setHasError] = React.useState(false);
+  
+  React.useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      console.error("Caught error:", event.error);
+      setHasError(true);
+    };
+    
+    window.addEventListener('error', handleError);
+    
+    return () => {
+      window.removeEventListener('error', handleError);
+    };
+  }, []);
+  
+  if (hasError) {
+    return (
+      <div className="p-4 text-center">
+        <div className="bg-danger-100 text-danger p-4 rounded-medium mb-4">
+          <h3 className="text-lg font-semibold">Произошла ошибка</h3>
+          <p>Пожалуйста, перезагрузите страницу</p>
+        </div>
+        <Button 
+          color="primary" 
+          onPress={() => window.location.reload()}
+          startContent={<Icon icon="lucide:refresh-cw" />}
+        >
+          Перезагрузить
+        </Button>
+      </div>
+    );
+  }
+  
   return (
     <div 
       className="p-4 md:p-6 min-h-[calc(100vh-120px)] relative"
@@ -57,6 +122,39 @@ export const TournamentView: React.FC = () => {
       {state.backgroundImage && (
         <div className="absolute inset-0 bg-background/60 backdrop-blur-[2px] -m-4 md:-m-6" />
       )}
+      
+      {/* Connection status indicator */}
+      <div className="relative z-10 flex justify-end mb-4">
+        {isConnected === true && (
+          <div className="flex items-center gap-2 text-success bg-content1 px-3 py-1 rounded-full shadow-sm">
+            <Icon icon="lucide:wifi" />
+            <span>Синхронизация активна</span>
+            <span className="text-xs text-default-500">({formattedSyncTime})</span>
+          </div>
+        )}
+        {isConnected === false && (
+          <div className="flex items-center gap-2 text-danger bg-content1 px-3 py-1 rounded-full shadow-sm">
+            <Icon icon="lucide:wifi-off" />
+            <span>Нет синхронизации</span>
+            <Button 
+              size="sm" 
+              variant="flat" 
+              color="primary" 
+              onPress={syncData}
+              startContent={<Icon icon="lucide:refresh-cw" size={14} />}
+              className="ml-2"
+            >
+              Повторить
+            </Button>
+          </div>
+        )}
+        {isConnected === null && (
+          <div className="flex items-center gap-2 text-default-500 bg-content1 px-3 py-1 rounded-full shadow-sm">
+            <Spinner size="sm" />
+            <span>Проверка подключения...</span>
+          </div>
+        )}
+      </div>
       
       {/* Club logo if available */}
       {state.clubLogo && (

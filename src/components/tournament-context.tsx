@@ -1,5 +1,5 @@
 import React from "react";
-import DbService from "../services/db-service";
+import FirebaseService from "../services/firebase-service";
 
 export interface BlindLevel {
   id: number;
@@ -135,59 +135,90 @@ export const TournamentContext = React.createContext<TournamentContextType>({
 export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, setState] = React.useState<TournamentState>(defaultState);
   const [isLoading, setIsLoading] = React.useState(true);
+  const [lastSyncTime, setLastSyncTime] = React.useState<number>(0);
   const timerRef = React.useRef<number | null>(null);
-  const dbService = React.useMemo(() => DbService.getInstance(), []);
+  const stateRef = React.useRef<TournamentState>(state);
   
-  // Initialize database and load active tournament
+  // Update the ref whenever state changes
   React.useEffect(() => {
-    const initDb = async () => {
+    stateRef.current = state;
+  }, [state]);
+  
+  // Use ref for Firebase service to avoid recreation
+  const firebaseService = React.useMemo(() => FirebaseService.getInstance(), []);
+  
+  // Initialize Firebase and load active tournament
+  React.useEffect(() => {
+    let isMounted = true;
+    
+    const initFirebase = async () => {
+      if (!isMounted) return;
+      
       setIsLoading(true);
       try {
-        await dbService.init();
-        const activeTournament = await dbService.getActiveTournament();
+        await firebaseService.init();
+        const activeTournament = await firebaseService.getActiveTournament();
         
-        if (activeTournament) {
+        if (activeTournament && isMounted) {
           setState(activeTournament);
-        } else {
+          setLastSyncTime(Date.now());
+        } else if (isMounted) {
           // If no active tournament, create a new one
-          const tournamentId = await dbService.createTournament(
-            "Новый турнир", 
-            {
+          try {
+            const newState = {
               ...defaultState,
               lastUpdated: Date.now()
-            }
-          );
-          console.log(`Created new tournament with ID: ${tournamentId}`);
+            };
+            
+            await firebaseService.createTournament("Новый турнир", newState);
+            setState(newState);
+          } catch (error) {
+            console.error("Failed to create new tournament:", error);
+          }
         }
       } catch (error) {
-        console.error("Failed to initialize database:", error);
+        console.error("Failed to initialize Firebase:", error);
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
     
-    initDb();
+    initFirebase();
     
-    // Add change listener for database updates
-    const handleDbChange = (updatedData: TournamentState) => {
+    // Add change listener for Firebase updates
+    const handleFirebaseChange = (updatedData: TournamentState) => {
+      if (!isMounted) return;
+      
       // Only update if the data is newer than our current state
-      if (updatedData.lastUpdated > state.lastUpdated) {
+      if (updatedData && updatedData.lastUpdated > stateRef.current.lastUpdated) {
         setState(updatedData);
+        setLastSyncTime(Date.now());
       }
     };
     
-    dbService.addChangeListener(handleDbChange);
+    firebaseService.addChangeListener(handleFirebaseChange);
     
     return () => {
-      dbService.removeChangeListener(handleDbChange);
+      isMounted = false;
+      firebaseService.removeChangeListener(handleFirebaseChange);
     };
-  }, [dbService]);
+  }, [firebaseService]);
 
-  // Save state to database whenever it changes
+  // Save state to Firebase with debounce
+  const saveDebounceRef = React.useRef<NodeJS.Timeout | null>(null);
+  
   React.useEffect(() => {
     if (isLoading) return;
     
-    const saveState = async () => {
+    // Clear any existing timeout
+    if (saveDebounceRef.current) {
+      clearTimeout(saveDebounceRef.current);
+    }
+    
+    // Set a new timeout
+    saveDebounceRef.current = setTimeout(async () => {
       // Add timestamp before saving
       const stateWithTimestamp = {
         ...state,
@@ -195,16 +226,20 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       };
       
       try {
-        await dbService.updateActiveTournament(stateWithTimestamp);
+        await firebaseService.updateActiveTournament(stateWithTimestamp);
       } catch (error) {
         console.error("Failed to save tournament state:", error);
       }
-    };
+    }, 500); // 500ms debounce
     
-    saveState();
-  }, [state, dbService, isLoading]);
+    return () => {
+      if (saveDebounceRef.current) {
+        clearTimeout(saveDebounceRef.current);
+      }
+    };
+  }, [state, firebaseService, isLoading]);
 
-  // Timer logic
+  // Timer logic with improved cleanup
   React.useEffect(() => {
     if (state.isRunning) {
       timerRef.current = window.setInterval(() => {
@@ -220,7 +255,6 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               };
             } else {
               // Tournament ended
-              clearInterval(timerRef.current!);
               return {
                 ...prevState,
                 isRunning: false,
@@ -240,9 +274,17 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return () => {
       if (timerRef.current) {
         clearInterval(timerRef.current);
+        timerRef.current = null;
       }
     };
   }, [state.isRunning]);
+
+  // Clean up all Firebase listeners on unmount
+  React.useEffect(() => {
+    return () => {
+      firebaseService.cleanupAllListeners();
+    };
+  }, [firebaseService]);
 
   const startTimer = () => {
     setState((prevState) => ({ ...prevState, isRunning: true }));
@@ -504,16 +546,20 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }));
   };
 
-  // Manual sync function
-  const syncData = () => {
-    const savedState = localStorage.getItem("tournamentState");
-    if (savedState) {
-      try {
-        const parsedState = JSON.parse(savedState);
-        setState(parsedState);
-      } catch (e) {
-        console.error("Failed to sync tournament state", e);
+  // Manual sync function with timeout and error handling
+  const syncData = async () => {
+    try {
+      setIsLoading(true);
+      const activeTournament = await firebaseService.getActiveTournament(10000); // 10s timeout
+      
+      if (activeTournament) {
+        setState(activeTournament);
+        setLastSyncTime(Date.now());
       }
+    } catch (error) {
+      console.error("Failed to sync tournament state:", error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -536,7 +582,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         lastUpdated: Date.now()
       };
       
-      const tournamentId = await dbService.createTournament(name, newState);
+      const tournamentId = await firebaseService.createTournament(name, newState);
       setState(newState);
       
       return tournamentId;
@@ -549,7 +595,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // Add function to load a tournament
   const loadTournament = async (id: string) => {
     try {
-      const tournamentData = await dbService.setActiveTournament(id);
+      const tournamentData = await firebaseService.setActiveTournament(id);
       if (tournamentData) {
         setState(tournamentData);
         return true;
@@ -564,7 +610,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // Add function to get all tournaments
   const getAllTournaments = async () => {
     try {
-      return await dbService.getAllTournaments();
+      return await firebaseService.getAllTournaments();
     } catch (error) {
       console.error("Failed to get all tournaments:", error);
       return [];
@@ -574,7 +620,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // Add function to delete a tournament
   const deleteTournament = async (id: string) => {
     try {
-      await dbService.deleteTournament(id);
+      await firebaseService.deleteTournament(id);
       return true;
     } catch (error) {
       console.error("Failed to delete tournament:", error);
@@ -615,6 +661,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     getAllTournaments,
     deleteTournament,
     isLoading,
+    lastSyncTime,
   };
 
   return (
