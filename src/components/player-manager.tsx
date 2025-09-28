@@ -33,6 +33,7 @@ export const PlayerManager: React.FC = () => {
   } = useTournament();
   
   const [newPlayerName, setNewPlayerName] = React.useState("");
+  // Добавляем состояния для баунти и оплаты
   const [bountyAmount, setBountyAmount] = React.useState<Record<number, number>>({});
   const [paymentAmount, setPaymentAmount] = React.useState<Record<number, number>>({});
   const [editingPlayerId, setEditingPlayerId] = React.useState<number | null>(null);
@@ -117,6 +118,7 @@ export const PlayerManager: React.FC = () => {
     removePlayer(player.id);
   };
 
+  // Добавляем обработчики для баунти и оплаты
   const handleUpdateBounty = (player, amount) => {
     // Проверяем, что player - это объект и имеет необходимые свойства
     if (!player || typeof player !== 'object' || !player.id) {
@@ -129,56 +131,27 @@ export const PlayerManager: React.FC = () => {
     
     // Передаем только ID игрока и числовое значение
     addBountyChips(player.id, bountyAmount);
+    
+    // Сбрасываем значение поля ввода
+    setBountyAmount(prev => ({...prev, [player.id]: 0}));
   };
 
-  const handleRecordPayment = (player) => {
+  const handleRecordPayment = (player, amount) => {
     // Проверяем, что player - это объект и имеет необходимые свойства
     if (!player || typeof player !== 'object' || !player.id) {
       console.error("Invalid player object:", player);
       return;
     }
     
-    const amount = Number(paymentAmount[player.id]) || 0;
-    if (amount <= 0) {
-      return;
-    }
+    // Проверяем, что amount - это число
+    const payAmount = Number(amount) || 0;
+    if (payAmount <= 0) return;
     
-    const totalCost = 
-      (state.entryFee || 0) + 
-      ((player.rebuys || 0) * (state.rebuyFee || 0)) + 
-      ((player.addons || 0) * (state.addonFee || 0));
+    // Передаем только ID игрока и числовое значение
+    recordPayment(player.id, payAmount);
     
-    const remainingToPay = totalCost - (player.paidAmount || 0);
-    
-    if (amount > remainingToPay) {
-      confirm({
-        title: "Превышение суммы",
-        message: `Вы пытаетесь внести ${amount} руб., но осталось оплатить только ${remainingToPay} руб. Внести только оставшуюся сумму?`,
-        confirmLabel: "Да, внести остаток",
-        cancelLabel: "Отмена",
-        confirmColor: "warning",
-        icon: "lucide:alert-triangle",
-        onConfirm: () => {
-          // Передаем только ID игрока и числовое значение
-          recordPayment(player.id, remainingToPay);
-          setPaymentAmount(prev => ({...prev, [player.id]: 0}));
-        }
-      });
-    } else {
-      confirm({
-        title: "Подтверждение оплаты",
-        message: `Внести оплату ${amount} руб. для игрока "${player.name || 'Неизвестный'}"?`,
-        confirmLabel: "Подтвердить",
-        cancelLabel: "Отмена",
-        confirmColor: "success",
-        icon: "lucide:credit-card",
-        onConfirm: () => {
-          // Передаем только ID игрока и числовое значение
-          recordPayment(player.id, amount);
-          setPaymentAmount(prev => ({...prev, [player.id]: 0}));
-        }
-      });
-    }
+    // Сбрасываем значение поля ввода
+    setPaymentAmount(prev => ({...prev, [player.id]: 0}));
   };
 
   const startEditingPlayerName = (player: Player) => {
@@ -287,6 +260,8 @@ export const PlayerManager: React.FC = () => {
               <TableHeader>
                 <TableColumn>Игрок</TableColumn>
                 <TableColumn>Фишки</TableColumn>
+                <TableColumn>Баунти</TableColumn>
+                <TableColumn>Оплата</TableColumn>
                 <TableColumn>Статус</TableColumn>
                 <TableColumn>Действия</TableColumn>
               </TableHeader>
@@ -300,6 +275,16 @@ export const PlayerManager: React.FC = () => {
                     ((player.rebuys || 0) * (state.rebuyChips || 0)) + 
                     ((player.addons || 0) * (state.addonChips || 0));
                     
+                  // Рассчитываем общую стоимость участия
+                  const totalCost = 
+                    (state.entryFee || 0) + 
+                    ((player.rebuys || 0) * (state.rebuyFee || 0)) + 
+                    ((player.addons || 0) * (state.addonFee || 0));
+                  
+                  // Рассчитываем оставшуюся сумму к оплате
+                  const paidAmount = player.paidAmount || 0;
+                  const remainingToPay = Math.max(0, totalCost - paidAmount);
+                  
                   return (
                     <TableRow key={player.id} className={player.isEliminated ? "opacity-60" : ""}>
                       <TableCell>
@@ -317,6 +302,67 @@ export const PlayerManager: React.FC = () => {
                           </div>
                         </div>
                       </TableCell>
+                      
+                      {/* Добавляем колонку для баунти */}
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            size="sm"
+                            placeholder="Кол-во"
+                            value={bountyAmount[player.id]?.toString() || ""}
+                            onValueChange={(value) => 
+                              setBountyAmount(prev => ({...prev, [player.id]: Number(value) || 0}))
+                            }
+                            className="w-20"
+                            min={0}
+                          />
+                          <Button 
+                            size="sm" 
+                            color="primary" 
+                            variant="flat"
+                            onPress={() => handleUpdateBounty(player, bountyAmount[player.id])}
+                          >
+                            <Icon icon="lucide:target" className="mr-1" />
+                            Баунти
+                          </Button>
+                          <div className="text-sm font-medium">
+                            {player.bountyChips ? `${player.bountyChips.toLocaleString()} фишек` : "-"}
+                          </div>
+                        </div>
+                      </TableCell>
+                      
+                      {/* Добавляем колонку для оплаты */}
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            size="sm"
+                            placeholder="Сумма"
+                            value={paymentAmount[player.id]?.toString() || ""}
+                            onValueChange={(value) => 
+                              setPaymentAmount(prev => ({...prev, [player.id]: Number(value) || 0}))
+                            }
+                            className="w-20"
+                            min={0}
+                          />
+                          <Button 
+                            size="sm" 
+                            color="success" 
+                            variant="flat"
+                            onPress={() => handleRecordPayment(player, paymentAmount[player.id])}
+                          >
+                            <Icon icon="lucide:credit-card" className="mr-1" />
+                            Оплата
+                          </Button>
+                        </div>
+                        <div className="mt-1 text-xs">
+                          <span className={remainingToPay > 0 ? "text-danger" : "text-success"}>
+                            {paidAmount.toLocaleString()} / {totalCost.toLocaleString()} руб.
+                          </span>
+                        </div>
+                      </TableCell>
+                      
                       <TableCell>
                         {player.isEliminated ? (
                           <span className="text-danger flex items-center gap-1">

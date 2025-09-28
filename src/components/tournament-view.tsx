@@ -13,6 +13,7 @@ export const TournamentView: React.FC = () => {
     nextLevel, 
     previousLevel,
     syncData,
+    syncTimerOnly,
     saveStatus // Add this to destructuring
   } = useTournament();
   
@@ -120,55 +121,46 @@ export const TournamentView: React.FC = () => {
       
       {/* Connection status indicator with save status */}
       <div className="relative z-10 flex justify-end mb-4">
-        {isConnected === true && (
-          <div className="flex items-center gap-2 text-success bg-content1 px-3 py-1 rounded-full shadow-sm">
-            <Icon icon="lucide:wifi" />
-            <span>Синхронизация активна</span>
-            <span className="text-xs text-default-500">({formattedSyncTime})</span>
-            
-            {/* Add save status indicator */}
-            {saveStatus === 'saving' && (
-              <div className="flex items-center gap-1 ml-2 text-default-500">
-                <Icon icon="lucide:loader" className="animate-spin" size={14} />
-                <span className="text-xs">Сохранение...</span>
-              </div>
-            )}
-            {saveStatus === 'success' && (
-              <div className="flex items-center gap-1 ml-2 text-success">
-                <Icon icon="lucide:check" size={14} />
-                <span className="text-xs">Сохранено</span>
-              </div>
-            )}
-            {saveStatus === 'error' && (
-              <div className="flex items-center gap-1 ml-2 text-danger">
-                <Icon icon="lucide:alert-triangle" size={14} />
-                <span className="text-xs">Ошибка</span>
-              </div>
-            )}
-          </div>
-        )}
-        {isConnected === false && (
-          <div className="flex items-center gap-2 text-danger bg-content1 px-3 py-1 rounded-full shadow-sm">
-            <Icon icon="lucide:wifi-off" />
-            <span>Нет синхронизации</span>
-            <Button 
-              size="sm" 
-              variant="flat" 
-              color="primary" 
-              onPress={syncData}
-              startContent={<Icon icon="lucide:refresh-cw" size={14} />}
-              className="ml-2"
-            >
-              Повторить
-            </Button>
-          </div>
-        )}
-        {isConnected === null && (
-          <div className="flex items-center gap-2 text-default-500 bg-content1 px-3 py-1 rounded-full shadow-sm">
-            <Spinner size="sm" />
-            <span>Проверка подключения...</span>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          <Button 
+            color="primary" 
+            variant="flat" 
+            size="sm"
+            onPress={syncTimerOnly}
+            startContent={<Icon icon="lucide:clock" />}
+            className="mr-2"
+          >
+            Синхронизировать таймер
+          </Button>
+          
+          {isConnected === true && (
+            <div className="flex items-center gap-2 text-success bg-content1 px-3 py-1 rounded-full shadow-sm">
+              <Icon icon="lucide:wifi" />
+              <span>Синхронизация активна</span>
+              <span className="text-xs text-default-500">({formattedSyncTime})</span>
+              
+              {/* Add save status indicator */}
+              {saveStatus === 'saving' && (
+                <div className="flex items-center gap-1 ml-2 text-default-500">
+                  <Icon icon="lucide:loader" className="animate-spin" size={14} />
+                  <span className="text-xs">Сохранение...</span>
+                </div>
+              )}
+              {saveStatus === 'success' && (
+                <div className="flex items-center gap-1 ml-2 text-success">
+                  <Icon icon="lucide:check" size={14} />
+                  <span className="text-xs">Сохранено</span>
+                </div>
+              )}
+              {saveStatus === 'error' && (
+                <div className="flex items-center gap-1 ml-2 text-danger">
+                  <Icon icon="lucide:alert-triangle" size={14} />
+                  <span className="text-xs">Ошибка</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
       
       {/* Club logo if available */}
@@ -439,3 +431,18 @@ export const TournamentView: React.FC = () => {
 const Spinner = () => (
   <div className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
 );
+
+// Добавляем эффект для принудительной синхронизации каждые 30 секунд ВНУТРИ компонента
+// React.useEffect(() => {
+//   // Синхронизируем данные при монтировании компонента
+//   syncData();
+  
+//   // Устанавливаем интервал для регулярной синхронизации
+//   const syncInterval = setInterval(() => {
+//     syncData();
+//   }, 30000); // Каждые 30 секунд
+  
+//   return () => {
+//     clearInterval(syncInterval);
+//   };
+// }, [syncData]);

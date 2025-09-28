@@ -600,6 +600,38 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   }, [state, firebaseService]);
 
+  // Добавляем функцию для синхронизации только данных таймера
+  const syncTimerOnly = useCallback(async () => {
+    try {
+      setSaveStatus('saving');
+      
+      // Создаем объект только с данными таймера
+      const timerData = {
+        currentLevelIndex: state.currentLevelIndex,
+        timeRemaining: state.timeRemaining,
+        isRunning: state.isRunning,
+        lastUpdated: Date.now()
+      };
+      
+      // Обновляем только данные таймера в Firebase
+      await firebaseService.updateActiveTournamentTimer(timerData);
+      
+      setLastSyncTime(Date.now());
+      setSaveStatus('success');
+      
+      // Сбрасываем статус через задержку
+      setTimeout(() => {
+        setSaveStatus('idle');
+      }, 2000);
+      
+      return true;
+    } catch (error) {
+      console.error("Failed to sync timer data:", error);
+      setSaveStatus('error');
+      return false;
+    }
+  }, [state.currentLevelIndex, state.timeRemaining, state.isRunning, firebaseService]);
+
   // Timer logic with improved cleanup
   // React.useEffect(() => {
   //   if (state.isRunning) {
@@ -642,13 +674,13 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   React.useEffect(() => {
   if (!state.isRunning) {
     if (timerRef.current) {
-      clearInterval(timerRef.current);
+      cancelAnimationFrame(timerRef.current);
       timerRef.current = null;
     }
     return;
   }
 
-  // Используем requestAnimationFrame для более плавной анимации
+  // Добавляем переменные для отслеживания времени
   let lastUpdateTime = Date.now();
   let accumulatedTime = 0;
   
@@ -669,24 +701,29 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           // Время вышло - переходим на следующий уровень
           const nextLevelIndex = prevState.currentLevelIndex + 1;
           if (nextLevelIndex < prevState.levels.length) {
+            // Переход на следующий уровень без принудительной синхронизации
             return {
               ...prevState,
               currentLevelIndex: nextLevelIndex,
               timeRemaining: prevState.levels[nextLevelIndex].duration * 60,
+              lastUpdated: Date.now()
             };
           } else {
-            // Турнир завершен
+            // Турнир завершен без принудительной синхронизации
             return {
               ...prevState,
               isRunning: false,
               timeRemaining: 0,
+              lastUpdated: Date.now()
             };
           }
         }
         
+        // Обновляем только timeRemaining без принудительной синхронизации
         return {
           ...prevState,
           timeRemaining: prevState.timeRemaining - secondsToSubtract,
+          lastUpdated: Date.now()
         };
       });
     }
@@ -714,11 +751,25 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [firebaseService]);
 
   const startTimer = () => {
-    setState((prevState) => ({ ...prevState, isRunning: true }));
+    setState((prevState) => ({ 
+      ...prevState, 
+      isRunning: true,
+      lastUpdated: Date.now()
+    }));
+    
+    // Принудительно синхронизируем с Firebase
+    setTimeout(() => forceSave(), 0);
   };
 
   const pauseTimer = () => {
-    setState((prevState) => ({ ...prevState, isRunning: false }));
+    setState((prevState) => ({ 
+      ...prevState, 
+      isRunning: false,
+      lastUpdated: Date.now()
+    }));
+    
+    // Принудительно синхронизируем с Firebase
+    setTimeout(() => forceSave(), 0);
   };
 
   const resetTimer = () => {
@@ -726,7 +777,11 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       ...prevState,
       isRunning: false,
       timeRemaining: (prevState.levels?.[prevState.currentLevelIndex]?.duration || 15) * 60,
+      lastUpdated: Date.now()
     }));
+    
+    // Принудительно синхронизируем с Firebase
+    setTimeout(() => forceSave(), 0);
   };
 
   const nextLevel = () => {
@@ -738,10 +793,14 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           currentLevelIndex: nextLevelIndex,
           timeRemaining: (prevState.levels?.[nextLevelIndex]?.duration || 15) * 60,
           isRunning: false,
+          lastUpdated: Date.now()
         };
       }
       return prevState;
     });
+    
+    // Принудительно синхронизируем с Firebase
+    setTimeout(() => forceSave(), 0);
   };
 
   const previousLevel = () => {
@@ -753,10 +812,14 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           currentLevelIndex: prevLevelIndex,
           timeRemaining: (prevState.levels?.[prevLevelIndex]?.duration || 15) * 60,
           isRunning: false,
+          lastUpdated: Date.now()
         };
       }
       return prevState;
     });
+    
+    // Принудительно синхронизируем с Firebase
+    setTimeout(() => forceSave(), 0);
   };
 
   const updateLevel = (id: number, levelUpdates: Partial<BlindLevel>) => {
@@ -1270,6 +1333,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     updateAddonFee,
     addBountyChips,
     syncData,
+    syncTimerOnly,
     recordPayment,
     createNewTournament,
     loadTournament,

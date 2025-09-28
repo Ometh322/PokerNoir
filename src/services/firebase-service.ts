@@ -148,19 +148,21 @@ class FirebaseService {
       
       if (tournament) {
         // Проверяем, не является ли это обновление результатом нашего собственного изменения
-        if (tournament.data.lastUpdated <= this.lastUpdateTime) {
-          console.log("Ignoring own update");
-          return;
+        // и проверяем, что удаленное обновление новее нашего последнего обновления
+        if (tournament.data.lastUpdated > this.lastUpdateTime) {
+          console.log("Received newer update from server:", new Date(tournament.data.lastUpdated).toLocaleTimeString());
+          
+          // Notify all listeners of the change
+          this.changeListeners.forEach(listener => {
+            try {
+              listener(tournament.data);
+            } catch (error) {
+              console.error("Error in tournament change listener:", error);
+            }
+          });
+        } else {
+          console.log("Ignoring older update from server");
         }
-        
-        // Notify all listeners of the change
-        this.changeListeners.forEach(listener => {
-          try {
-            listener(tournament.data);
-          } catch (error) {
-            console.error("Error in tournament change listener:", error);
-          }
-        });
       }
     }, (error) => {
       console.error(`Error listening to tournament ${tournamentId}:`, error);
@@ -286,9 +288,15 @@ class FirebaseService {
 
   // Update the active tournament with improved error handling and logging
   public async updateActiveTournament(data: TournamentState): Promise<void> {
+    // Обновляем время последнего обновления в данных
+    const dataWithTimestamp = {
+      ...data,
+      lastUpdated: Date.now()
+    };
+    
     // Сохраняем данные локально для резервной копии
     try {
-      localStorage.setItem("tournamentState", JSON.stringify(data));
+      localStorage.setItem("tournamentState", JSON.stringify(dataWithTimestamp));
     } catch (error) {
       console.error("Failed to save to localStorage:", error);
     }
@@ -300,22 +308,22 @@ class FirebaseService {
     }
     
     // Обновляем время последнего обновления
-    this.lastUpdateTime = Date.now();
+    this.lastUpdateTime = dataWithTimestamp.lastUpdated;
     
     try {
       // Выполняем обновление немедленно
-      await this.performUpdate(data);
-      console.log("Tournament data saved to Firebase");
+      await this.performUpdate(dataWithTimestamp);
+      console.log("Tournament data saved to Firebase:", new Date(dataWithTimestamp.lastUpdated).toLocaleTimeString());
     } catch (error) {
       console.error("Failed to save to Firebase:", error);
       
       // Сохраняем неудачное обновление для последующей повторной попытки
-      localStorage.setItem("failedUpdate", JSON.stringify(data));
+      localStorage.setItem("failedUpdate", JSON.stringify(dataWithTimestamp));
       
       // Повторяем попытку через 5 секунд
       setTimeout(async () => {
         try {
-          await this.performUpdate(data);
+          await this.performUpdate(dataWithTimestamp);
           console.log("Retry successful: Tournament data saved to Firebase");
           localStorage.removeItem("failedUpdate");
         } catch (retryError) {
@@ -506,6 +514,36 @@ class FirebaseService {
       return true;
     } catch (error) {
       console.error("Error resetting all Firebase data:", error);
+      return false;
+    }
+  }
+
+  // Добавляем метод для обновления только данных таймера
+  async updateActiveTournamentTimer(timerData: {
+    currentLevelIndex: number;
+    timeRemaining: number;
+    isRunning: boolean;
+    lastUpdated: number;
+  }): Promise<boolean> {
+    try {
+      if (!this.db || !this.activeTournamentId) {
+        console.error("Firebase not initialized or no active tournament");
+        return false;
+      }
+
+      const tournamentRef = doc(this.db, "tournaments", this.activeTournamentId);
+      
+      // Обновляем только поля таймера
+      await updateDoc(tournamentRef, {
+        currentLevelIndex: timerData.currentLevelIndex,
+        timeRemaining: timerData.timeRemaining,
+        isRunning: timerData.isRunning,
+        lastUpdated: timerData.lastUpdated
+      });
+      
+      return true;
+    } catch (error) {
+      console.error("Error updating tournament timer:", error);
       return false;
     }
   }

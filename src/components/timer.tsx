@@ -58,26 +58,13 @@ const TimerDisplay = React.memo(({ seconds, isRunning, isPause }: {
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
-  }, [isRunning]);
+  }, [isRunning, displayTime]);
   
   // Форматируем время для отображения
   const formattedTime = React.useMemo(() => {
     const minutes = Math.floor(displayTime / 60);
     const secs = displayTime % 60;
     return `${minutes}:${secs.toString().padStart(2, '0')}`;
-  }, [displayTime]);
-  
-  // Определяем цвет прогресс-бара
-  const progressColor = React.useMemo(() => {
-    if (isPause) return "bg-secondary";
-    if (displayTime <= 60) return "bg-danger";
-    if (displayTime <= 180) return "bg-warning";
-    return "bg-success";
-  }, [displayTime, isPause]);
-  
-  // Вычисляем ширину прогресс-бара
-  const progressWidth = React.useMemo(() => {
-    return `${(displayTime % 60) / 60 * 100}%`;
   }, [displayTime]);
   
   return (
@@ -91,12 +78,6 @@ const TimerDisplay = React.memo(({ seconds, isRunning, isPause }: {
           </div>
         </div>
       </Card>
-      <div className="h-2 lg:h-3 w-full bg-default-100 absolute bottom-0 left-0 right-0">
-        <div 
-          className={`h-full ${progressColor} transition-all duration-1000 ease-linear`}
-          style={{ width: progressWidth }}
-        />
-      </div>
     </div>
   );
 });
@@ -105,6 +86,25 @@ const TimerDisplay = React.memo(({ seconds, isRunning, isPause }: {
 TimerDisplay.displayName = "TimerDisplay";
 
 export const Timer: React.FC<TimerProps> = ({ seconds, isRunning, isPause }) => {
+  // Добавляем хук для принудительного обновления компонента
+  const [, forceUpdate] = React.useReducer((x) => x + 1, 0);
+  
+  // Добавляем эффект для обновления прогресс-бара каждую секунду
+  React.useEffect(() => {
+    if (!isRunning) return;
+    
+    // Обновляем прогресс-бар каждую секунду для плавной анимации
+    const interval = setInterval(() => {
+      // Принудительно обновляем компонент для плавной анимации
+      // Это не влияет на состояние в контексте, только на визуальное отображение
+      forceUpdate({});
+    }, 1000);
+    
+    return () => {
+      clearInterval(interval);
+    };
+  }, [isRunning]);
+  
   // Просто возвращаем мемоизированный компонент
   return <TimerDisplay seconds={seconds} isRunning={isRunning} isPause={isPause} />;
 };
