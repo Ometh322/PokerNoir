@@ -292,7 +292,7 @@ export const TournamentView: React.FC = () => {
                         <span>Игроков</span>
                       </div>
                       <div className="text-3xl font-bold">
-                        {activePlayers.length}/{state.players.length}
+                        {activePlayers.length}/{(state.players || []).length}
                       </div>
                     </div>
                     <div className="p-5 bg-content2 rounded-medium shadow-xs">
