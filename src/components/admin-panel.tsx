@@ -30,6 +30,7 @@ export const AdminPanel: React.FC = () => {
     updateLevel, 
     addLevel, 
     removeLevel,
+    updateLevels,
     updateInitialChips,
     updateRebuyChips,
     updateAddonChips,
@@ -106,9 +107,12 @@ export const AdminPanel: React.FC = () => {
   const handleAddLevel = () => {
     if (newItemType === 'level') {
       if (newLevel.smallBlind > 0 && newLevel.bigBlind > 0) {
-        addLevel(newLevel);
+        addLevel({
+          ...newLevel,
+          type: 'level'
+        });
         setNewLevel({
-          type: 'level',
+          type: 'level', // Keep the type as 'level' after adding
           smallBlind: 0,
           bigBlind: 0,
           ante: 0,
@@ -134,6 +138,36 @@ export const AdminPanel: React.FC = () => {
         name: 'Перерыв'
       });
     }
+  };
+
+  // Add new functions for reordering levels
+  const handleMoveLevel = (levelId: number, direction: 'up' | 'down') => {
+    const currentLevels = [...state.levels];
+    const currentIndex = currentLevels.findIndex(level => level.id === levelId);
+    
+    if (currentIndex === -1) return;
+    
+    let newIndex;
+    if (direction === 'up' && currentIndex > 0) {
+      newIndex = currentIndex - 1;
+    } else if (direction === 'down' && currentIndex < currentLevels.length - 1) {
+      newIndex = currentIndex + 1;
+    } else {
+      return; // Can't move further up/down
+    }
+    
+    // Swap the levels
+    [currentLevels[currentIndex], currentLevels[newIndex]] = 
+    [currentLevels[newIndex], currentLevels[currentIndex]];
+    
+    // Update the IDs to maintain sequential ordering
+    const reorderedLevels = currentLevels.map((level, index) => ({
+      ...level,
+      id: index + 1
+    }));
+    
+    // Update all levels at once
+    updateLevels(reorderedLevels);
   };
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>, type: 'background' | 'logo') => {
@@ -663,6 +697,7 @@ export const AdminPanel: React.FC = () => {
       </Card>
       
       {/* Tournament Structure */}
+      {/* Tournament Structure */}
       <Card>
         <CardHeader className="flex justify-between items-center">
           <h2 className="text-xl font-semibold">Структура турнира</h2>
@@ -679,103 +714,133 @@ export const AdminPanel: React.FC = () => {
               <TableColumn>Действия</TableColumn>
             </TableHeader>
             <TableBody>
-              {(state.levels || []).map((level) => (
-                <TableRow key={level.id} className={level.type === 'pause' ? "bg-content2/50" : ""}>
-                  <TableCell>
-                    {level.type === 'pause' 
-                      ? <span className="flex items-center gap-1">
-                          <Icon icon="lucide:coffee" className="text-default-600" />
-                          {level.name || 'Перерыв'}
-                        </span> 
-                      : level.id}
-                  </TableCell>
-                  <TableCell>
-                    {level.type === 'pause' ? 'Перерыв' : 'Уровень'}
-                  </TableCell>
-                  <TableCell>
-                    {level.type === 'pause' ? (
-                      '-'
-                    ) : (
+              {(state.levels || []).map((level, index) => {
+                // Calculate the game level number (excluding pauses)
+                const gameLevelNumber = state.levels
+                  .filter(l => l.type === 'level' && l.id <= level.id)
+                  .length;
+                
+                return (
+                  <TableRow key={level.id} className={level.type === 'pause' ? "bg-content2/50" : ""}>
+                    <TableCell>
+                      {level.type === 'pause' 
+                        ? <span className="flex items-center gap-1">
+                            <Icon icon="lucide:coffee" className="text-default-600" />
+                            {level.name || 'Перерыв'}
+                          </span> 
+                        : gameLevelNumber}
+                    </TableCell>
+                    <TableCell>
+                      {level.type === 'pause' ? 'Перерыв' : 'Уровень'}
+                    </TableCell>
+                    <TableCell>
+                      {level.type === 'pause' ? (
+                        '-'
+                      ) : (
+                        <Input
+                          type="number"
+                          size="sm"
+                          value={level.smallBlind.toString()}
+                          onValueChange={(value) => 
+                            updateLevel(level.id, { smallBlind: Number(value) || 0 })
+                          }
+                          min={0}
+                          isDisabled={level.type !== 'level'}
+                        />
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {level.type === 'pause' ? (
+                        '-'
+                      ) : (
+                        <Input
+                          type="number"
+                          size="sm"
+                          value={level.bigBlind.toString()}
+                          onValueChange={(value) => 
+                            updateLevel(level.id, { bigBlind: Number(value) || 0 })
+                          }
+                          min={0}
+                          isDisabled={level.type !== 'level'}
+                        />
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {level.type === 'pause' ? (
+                        '-'
+                      ) : (
+                        <Input
+                          type="number"
+                          size="sm"
+                          value={level.ante.toString()}
+                          onValueChange={(value) => 
+                            updateLevel(level.id, { ante: Number(value) || 0 })
+                          }
+                          min={0}
+                          isDisabled={level.type !== 'level'}
+                        />
+                      )}
+                    </TableCell>
+                    <TableCell>
                       <Input
                         type="number"
                         size="sm"
-                        value={level.smallBlind.toString()}
+                        value={level.duration.toString()}
                         onValueChange={(value) => 
-                          updateLevel(level.id, { smallBlind: Number(value) || 0 })
+                          updateLevel(level.id, { duration: Number(value) || 1 })
                         }
-                        min={0}
-                        isDisabled={level.type !== 'level'}
+                        min={1}
                       />
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {level.type === 'pause' ? (
-                      '-'
-                    ) : (
-                      <Input
-                        type="number"
-                        size="sm"
-                        value={level.bigBlind.toString()}
-                        onValueChange={(value) => 
-                          updateLevel(level.id, { bigBlind: Number(value) || 0 })
-                        }
-                        min={0}
-                        isDisabled={level.type !== 'level'}
-                      />
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {level.type === 'pause' ? (
-                      '-'
-                    ) : (
-                      <Input
-                        type="number"
-                        size="sm"
-                        value={level.ante.toString()}
-                        onValueChange={(value) => 
-                          updateLevel(level.id, { ante: Number(value) || 0 })
-                        }
-                        min={0}
-                        isDisabled={level.type !== 'level'}
-                      />
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      type="number"
-                      size="sm"
-                      value={level.duration.toString()}
-                      onValueChange={(value) => 
-                        updateLevel(level.id, { duration: Number(value) || 1 })
-                      }
-                      min={1}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    {level.type === 'pause' && (
-                      <Input
-                        size="sm"
-                        value={level.name || 'Перерыв'}
-                        onValueChange={(value) => 
-                          updateLevel(level.id, { name: value })
-                        }
-                        placeholder="Название перерыва"
-                        className="mb-2"
-                      />
-                    )}
-                    <Button 
-                      size="sm" 
-                      isIconOnly 
-                      color="danger" 
-                      variant="light"
-                      onPress={() => removeLevel(level.id)}
-                      isDisabled={state.levels.length <= 1}
-                    >
-                      <Icon icon="lucide:trash-2" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+                    </TableCell>
+                    <TableCell>
+                      {level.type === 'pause' && (
+                        <Input
+                          size="sm"
+                          value={level.name || 'Перерыв'}
+                          onValueChange={(value) => 
+                            updateLevel(level.id, { name: value })
+                          }
+                          placeholder="Название перерыва"
+                          className="mb-2"
+                        />
+                      )}
+                      <div className="flex gap-1">
+                        {/* Add move up/down buttons */}
+                        <Button 
+                          size="sm" 
+                          isIconOnly 
+                          variant="flat"
+                          color="default"
+                          onPress={() => handleMoveLevel(level.id, 'up')}
+                          isDisabled={index === 0}
+                        >
+                          <Icon icon="lucide:chevron-up" />
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          isIconOnly 
+                          variant="flat"
+                          color="default"
+                          onPress={() => handleMoveLevel(level.id, 'down')}
+                          isDisabled={index === state.levels.length - 1}
+                        >
+                          <Icon icon="lucide:chevron-down" />
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          isIconOnly 
+                          color="danger" 
+                          variant="light"
+                          onPress={() => removeLevel(level.id)}
+                          isDisabled={state.levels.length <= 1}
+                        >
+                          <Icon icon="lucide:trash-2" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
           

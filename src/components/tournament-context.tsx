@@ -833,12 +833,30 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const addLevel = (level: Omit<BlindLevel, "id">) => {
     setState((prevState) => {
-      const newId = Math.max(0, ...(prevState.levels || []).map((l) => l.id || 0)) + 1;
+      // Find the next available ID in sequence
+      const existingIds = prevState.levels.map(l => l.id);
+      let nextId = 1;
+      
+      // Find the first gap in the sequence or use length + 1
+      while (existingIds.includes(nextId)) {
+        nextId++;
+      }
+      
+      // Create the new level with the next ID
+      const newLevel = { ...level, id: nextId };
+      
+      // Add the new level and sort by ID
+      const newLevels = [...prevState.levels, newLevel].sort((a, b) => a.id - b.id);
+      
       return {
         ...prevState,
-        levels: [...(prevState.levels || []), { ...level, id: newId }].sort((a, b) => (a.id || 0) - (b.id || 0)),
+        levels: newLevels,
+        lastUpdated: Date.now()
       };
     });
+    
+    // Force save after adding a level
+    setTimeout(() => forceSave(), 100);
   };
 
   const removeLevel = (id: number) => {
@@ -846,6 +864,17 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       ...prevState,
       levels: (prevState.levels || []).filter((level) => level.id !== id),
     }));
+  };
+
+  const updateLevels = (levels: BlindLevel[]) => {
+    setState((prevState) => ({
+      ...prevState,
+      levels,
+      lastUpdated: Date.now()
+    }));
+    
+    // Force save after updating levels
+    setTimeout(() => forceSave(), 100);
   };
 
   const addPlayer = (name: string) => {
@@ -1316,6 +1345,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     updateLevel,
     addLevel,
     removeLevel,
+    updateLevels,
     addPlayer,
     removePlayer,
     addRebuy,

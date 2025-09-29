@@ -34,11 +34,27 @@ export const RankingView: React.FC = () => {
     };
   }, []);
   
-  // Sort players by chips in descending order for ranking with null/undefined protection
+  // Обновленная логика сортировки игроков - сортируем по баунти вместо фишек
   const sortedPlayers = [...(state.players || [])].sort((a, b) => {
-    const aChips = (a?.initialChips || 0) + ((a?.rebuys || 0) * (state.rebuyChips || 0)) + ((a?.addons || 0) * (state.addonChips || 0));
-    const bChips = (b?.initialChips || 0) + ((b?.rebuys || 0) * (state.rebuyChips || 0)) + ((b?.addons || 0) * (state.addonChips || 0));
-    return bChips - aChips; // Sort in descending order
+    // Проверка на null/undefined
+    if (!a || !b) return 0;
+    
+    // Сначала сортируем по статусу выбывания (активные игроки в начале)
+    if (a.isEliminated !== b.isEliminated) {
+      return a.isEliminated ? 1 : -1; // Активные игроки (false) идут первыми
+    }
+    
+    // Если оба игрока выбыли, сортируем по порядку выбывания (в обратном порядке)
+    if (a.isEliminated && b.isEliminated) {
+      // Игрок с большим номером выбывания (выбывший позже) должен быть выше
+      return (b.eliminationOrder || 0) - (a.eliminationOrder || 0);
+    }
+    
+    // Если оба игрока активны, сортируем по количеству баунти вместо фишек
+    const aBounty = a.bountyChips || 0;
+    const bBounty = b.bountyChips || 0;
+    
+    return bBounty - aBounty; // По убыванию количества баунти
   });
 
   return (
@@ -84,7 +100,7 @@ export const RankingView: React.FC = () => {
             <TableHeader>
               <TableColumn>Место</TableColumn>
               <TableColumn>Игрок</TableColumn>
-              <TableColumn>Фишки</TableColumn>
+              <TableColumn>Баунти</TableColumn>
               <TableColumn>Статус</TableColumn>
             </TableHeader>
             <TableBody emptyContent="Нет зарегистрированных игроков">
@@ -92,16 +108,14 @@ export const RankingView: React.FC = () => {
                 // Добавляем проверку на существование player
                 if (!player) return null;
                 
-                const totalChips = 
-                  (player.initialChips || 0) + 
-                  ((player.rebuys || 0) * (state.rebuyChips || 0)) + 
-                  ((player.addons || 0) * (state.addonChips || 0));
+                // Используем баунти вместо расчета фишек
+                const bountyChips = player.bountyChips || 0;
                   
                 return (
                   <TableRow key={player.id} className={player.isEliminated ? "opacity-60" : ""}>
                     <TableCell>{index + 1}</TableCell>
                     <TableCell>{player.name || "Неизвестный"}</TableCell>
-                    <TableCell className="font-semibold">{totalChips.toLocaleString()}</TableCell>
+                    <TableCell className="font-semibold">{bountyChips.toLocaleString()}</TableCell>
                     <TableCell>
                       {player.isEliminated ? (
                         <span className="text-danger flex items-center gap-1">
