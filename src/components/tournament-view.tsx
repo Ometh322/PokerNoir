@@ -116,7 +116,7 @@ export const TournamentView: React.FC = () => {
   // Удаляем прямое отображение таймера и используем компонент Timer
   return (
     <div 
-      className="p-4 md:p-6 min-h-[calc(100vh-120px)] relative"
+      className="p-2 md:p-3 min-h-[calc(100vh-120px)] relative flex flex-col"
       style={state.backgroundImage ? {
         backgroundImage: `url(${state.backgroundImage})`,
         backgroundSize: 'cover',
@@ -129,143 +129,143 @@ export const TournamentView: React.FC = () => {
         <div className="absolute inset-0 bg-background/60 backdrop-blur-[2px] -m-4 md:-m-6" />
       )}
       
-      {/* Connection status indicator with save status */}
-      <div className="relative z-10 flex justify-end mb-4">
-        <div className="flex items-center gap-2">
+      {/* Connection status indicator - make it smaller and less prominent */}
+      <div className="relative z-10 flex justify-end mb-2">
+        <div className="flex items-center gap-1 scale-90 origin-right">
           <Button 
             color="primary" 
             variant="flat" 
             size="sm"
             onPress={syncTimerOnly}
-            startContent={<Icon icon="lucide:clock" />}
-            className="mr-2"
+            startContent={<Icon icon="lucide:clock" size={16} />}
+            className="mr-1 text-xs"
           >
-            Синхронизировать таймер
+            Синхр.
           </Button>
           
           {isConnected === true && (
-            <div className="flex items-center gap-2 text-success bg-content1 px-3 py-1 rounded-full shadow-sm">
-              <Icon icon="lucide:wifi" />
-              <span>Синхронизация активна</span>
-              <span className="text-xs text-default-500">({formattedSyncTime})</span>
+            <div className="flex items-center gap-1 text-success bg-content1 px-2 py-0.5 rounded-full shadow-sm text-xs">
+              <Icon icon="lucide:wifi" size={14} />
+              <span className="hidden sm:inline">Синхронизация</span>
               
-              {/* Add save status indicator */}
+              {/* Add save status indicator - more compact */}
               {saveStatus === 'saving' && (
-                <div className="flex items-center gap-1 ml-2 text-default-500">
-                  <Icon icon="lucide:loader" className="animate-spin" size={14} />
-                  <span className="text-xs">Сохранение...</span>
-                </div>
+                <Icon icon="lucide:loader" className="animate-spin ml-1" size={12} />
               )}
               {saveStatus === 'success' && (
-                <div className="flex items-center gap-1 ml-2 text-success">
-                  <Icon icon="lucide:check" size={14} />
-                  <span className="text-xs">Сохранено</span>
-                </div>
+                <Icon icon="lucide:check" className="ml-1" size={12} />
               )}
               {saveStatus === 'error' && (
-                <div className="flex items-center gap-1 ml-2 text-danger">
-                  <Icon icon="lucide:alert-triangle" size={14} />
-                  <span className="text-xs">Ошибка</span>
-                </div>
+                <Icon icon="lucide:alert-triangle" className="ml-1" size={12} />
               )}
             </div>
           )}
         </div>
       </div>
       
-      {/* Club logo if available */}
+      {/* Club logo - make it smaller */}
       {state.clubLogo && (
-        <div className="relative z-10 flex justify-center mb-8">
-          <div className="bg-content1 p-4 rounded-medium shadow-md">
+        <div className="relative z-10 flex justify-center mb-2">
+          <div className="bg-content1 p-2 rounded-medium shadow-md">
             <img 
               src={state.clubLogo} 
               alt="Club Logo" 
-              className="max-h-24 max-w-full object-contain"
+              className="max-h-16 max-w-full object-contain"
             />
           </div>
         </div>
       )}
 
-      <div className="relative z-10">
-        {/* Center the timer and blinds section */}
-        <div className="flex flex-col items-center justify-center w-full max-w-6xl mx-auto">
-          {/* Tournament Stats Summary - Add this section */}
-          <div className="grid grid-cols-3 gap-4 w-full mb-6">
-            <div className="bg-content1 p-4 rounded-medium shadow-sm text-center">
-              <div className="text-default-600 text-sm">Игроков в игре</div>
-              <div className="text-2xl font-bold">{activePlayers.length}</div>
+      <div className="relative z-10 flex-grow flex flex-col">
+        {/* Center the blinds and timer section - make it MUCH larger */}
+        <div className="flex flex-col items-center justify-center w-full h-full">
+          {/* Tournament Stats Summary - УВЕЛИЧИВАЕМ размер еще на 30% */}
+          <div className="grid grid-cols-3 gap-6 w-full mb-8 p-6 bg-content1/80 rounded-lg shadow-sm">
+            <div className="bg-content2 p-6 rounded-medium shadow-sm text-center">
+              <div className="text-default-600 text-lg mb-3">Игроков</div>
+              <div className="text-4xl font-bold">{activePlayers.length}</div>
             </div>
-            <div className="bg-content1 p-4 rounded-medium shadow-sm text-center">
-              <div className="text-default-600 text-sm">Средний стек</div>
-              <div className="text-2xl font-bold">{averageStack.toLocaleString()}</div>
+            <div className="bg-content2 p-6 rounded-medium shadow-sm text-center">
+              <div className="text-default-600 text-lg mb-3">Средний стек</div>
+              <div className="text-4xl font-bold">{averageStack.toLocaleString()}</div>
             </div>
-            <div className="bg-content1 p-4 rounded-medium shadow-sm text-center">
-              <div className="text-default-600 text-sm">Следующий уровень</div>
+            <div className="bg-content2 p-6 rounded-medium shadow-sm text-center">
+              <div className="text-default-600 text-lg mb-3">След. уровень</div>
               {upcomingLevel ? (
                 upcomingLevel.type === 'pause' ? (
-                  <div className="text-xl font-medium text-secondary">
+                  <div className="text-3xl font-medium text-secondary">
                     {upcomingLevel.name || 'Перерыв'}
                   </div>
                 ) : (
-                  <div className="text-xl font-medium">
+                  <div className="text-3xl font-medium">
                     {upcomingLevel.smallBlind}/{upcomingLevel.bigBlind}
                   </div>
                 )
               ) : (
-                <div className="text-xl font-medium text-default-500">Последний</div>
+                <div className="text-3xl font-medium text-default-500">Последний</div>
               )}
             </div>
           </div>
 
-          <Card className="overflow-visible shadow-md w-full">
-            <CardBody className="gap-6 p-6">
-              <div className="text-center">
-                {isPause ? (
-                  <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-2 flex items-center justify-center gap-2">
-                    <Icon icon="lucide:coffee" className="text-secondary" />
-                    {currentLevel.name || 'Перерыв'}
-                  </h2>
-                ) : (
-                  <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-2">Уровень {currentGameLevelNumber}</h2>
+          {/* MAIN TOURNAMENT CARD - Make it take up 90% of the screen */}
+          <Card className="overflow-visible shadow-md w-full flex-grow flex flex-col min-h-[80vh]">
+            <CardBody className="gap-6 p-4 md:p-6 flex flex-col justify-between flex-grow">
+              <div className="flex flex-col justify-center items-center flex-grow">
+                <div className="text-center mb-2">
+                  {isPause ? (
+                    <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold flex items-center justify-center gap-2">
+                      <Icon icon="lucide:coffee" className="text-secondary" />
+                      {currentLevel.name || 'Перерыв'}
+                    </h2>
+                  ) : (
+                    <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold">Уровень {currentGameLevelNumber}</h2>
+                  )}
+                </div>
+                
+                {/* CHANGE: Делаем блайнды более широкими и адаптируем сетку в зависимости от наличия анте */}
+                {!isPause && (
+                  <div className={`grid ${currentLevel?.ante > 0 ? 'grid-cols-1 md:grid-cols-3' : 'grid-cols-1 md:grid-cols-2'} gap-6 w-full mx-auto mb-6 justify-items-center`}>
+                    <div className="p-6 lg:p-8 bg-primary-100 rounded-medium text-center shadow-sm border-2 border-primary-200 w-full">
+                      <div className="text-xl lg:text-2xl text-primary-700 mb-2 font-medium">Малый блайнд</div>
+                      <div className="text-7xl lg:text-9xl font-bold text-primary-600">{currentLevel?.smallBlind}</div>
+                    </div>
+                    <div className="p-6 lg:p-8 bg-primary-100 rounded-medium text-center shadow-sm border-2 border-primary-200 w-full">
+                      <div className="text-xl lg:text-2xl text-primary-700 mb-2 font-medium">Большой блайнд</div>
+                      <div className="text-7xl lg:text-9xl font-bold text-primary-600">{currentLevel?.bigBlind}</div>
+                    </div>
+                    {/* Only show ante if it's greater than 0 */}
+                    {currentLevel?.ante > 0 && (
+                      <div className="p-6 lg:p-8 bg-primary-100 rounded-medium text-center shadow-sm border-2 border-primary-200 w-full">
+                        <div className="text-xl lg:text-2xl text-primary-700 mb-2 font-medium">Анте</div>
+                        <div className="text-7xl lg:text-9xl font-bold text-primary-600">{currentLevel?.ante}</div>
+                      </div>
+                    )}
+                  </div>
                 )}
-                <div className="flex justify-center items-center gap-2 text-default-600 text-xl lg:text-2xl">
-                  <Icon icon="lucide:clock" className="text-2xl lg:text-3xl" />
-                  <span>Длительность уровня: {currentLevel?.duration} мин</span>
+                
+                <div className="flex justify-center items-center gap-2 text-default-600 text-lg lg:text-xl mb-2">
+                  <Icon icon="lucide:clock" className="text-xl lg:text-2xl" />
+                  <span>Длительность: {currentLevel?.duration} мин</span>
                 </div>
+                
+                {/* Timer component - make it larger */}
+                <Timer 
+                  seconds={state.timeRemaining} 
+                  isRunning={state.isRunning} 
+                  isPause={isPause}
+                  className="mx-auto w-full max-w-4xl" 
+                />
+                
+                {isPause && (
+                  <div className="p-6 bg-content2 rounded-medium text-center mt-4">
+                    <div className="text-2xl lg:text-3xl font-medium text-secondary">Перерыв</div>
+                    <div className="text-xl lg:text-2xl mt-2">Следующий уровень начнется после окончания перерыва</div>
+                  </div>
+                )}
               </div>
-              
-              {/* Timer component - centered */}
-              <Timer 
-                seconds={state.timeRemaining} 
-                isRunning={state.isRunning} 
-                isPause={isPause}
-                className="mx-auto max-w-3xl" // Center the timer
-              />
-              
-              {isPause ? (
-                <div className="p-6 bg-content2 rounded-medium text-center">
-                  <div className="text-2xl lg:text-3xl font-medium text-secondary">Перерыв</div>
-                  <div className="text-xl lg:text-2xl mt-2">Следующий уровень начнется после окончания перерыва</div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-3 gap-6 max-w-5xl mx-auto">
-                  <div className="p-6 lg:p-8 bg-content2 rounded-medium text-center shadow-xs">
-                    <div className="text-base lg:text-xl text-default-600 mb-2">Малый блайнд</div>
-                    <div className="text-4xl lg:text-6xl font-bold">{currentLevel?.smallBlind}</div>
-                  </div>
-                  <div className="p-6 lg:p-8 bg-content2 rounded-medium text-center shadow-xs">
-                    <div className="text-base lg:text-xl text-default-600 mb-2">Большой блайнд</div>
-                    <div className="text-4xl lg:text-6xl font-bold">{currentLevel?.bigBlind}</div>
-                  </div>
-                  <div className="p-6 lg:p-8 bg-content2 rounded-medium text-center shadow-xs">
-                    <div className="text-base lg:text-xl text-default-600 mb-2">Анте</div>
-                    <div className="text-4xl lg:text-6xl font-bold">{currentLevel?.ante}</div>
-                  </div>
-                </div>
-              )}
             </CardBody>
             <Divider />
-            <CardFooter className="flex justify-between p-4 lg:p-6">
+            <CardFooter className="flex justify-between p-3 lg:p-4">
               <div className="flex gap-2">
                 <Button
                   isIconOnly
@@ -312,18 +312,7 @@ export const TournamentView: React.FC = () => {
             </CardFooter>
           </Card>
           
-          {/* Move tournament stats below the timer */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6 w-full">
-            {/* Tournament Stats */}
-            <Card className="shadow-md">
-              {/* Existing stats card code */}
-            </Card>
-
-            {/* Next Level Preview */}
-            <Card className="shadow-md">
-              {/* Existing next level preview code */}
-            </Card>
-          </div>
+          {/* Remove tournament stats section to save space */}
         </div>
       </div>
     </div>

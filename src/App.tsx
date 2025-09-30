@@ -11,11 +11,11 @@ export default function App() {
   const [selected, setSelected] = React.useState("tournament");
 
   return (
-    <div className="min-h-screen bg-background p-4 md:p-8">
-      {/* Remove max-w-5xl constraint for tournament view */}
+    <div className="min-h-screen bg-background p-2 md:p-4">
+      {/* Remove max-w-5xl constraint for tournament view and reduce padding */}
       <Card className={`mx-auto ${selected === "tournament" ? "max-w-full w-full" : "max-w-5xl"}`}>
-        <CardHeader className="flex justify-between items-center px-4">
-          <h1 className="text-xl font-bold">Покерный Клуб NOIR</h1>
+        <CardHeader className="flex justify-between items-center px-4 py-2">
+          <h1 className="text-xl font-bold">Poker Tournament Manager</h1>
           <ThemeSwitcher />
         </CardHeader>
         <CardBody className="p-0">

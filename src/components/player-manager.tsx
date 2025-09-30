@@ -176,6 +176,27 @@ export const PlayerManager: React.FC = () => {
     setEditPlayerName(player.name);
   };
 
+  // Calculate player statistics with null/undefined checks
+  const totalEntries = (state.players || []).length;
+  const totalRebuys = (state.players || []).reduce((sum, player) => sum + (player?.rebuys || 0), 0);
+  const totalAddons = (state.players || []).reduce((sum, player) => sum + (player?.addons || 0), 0);
+  
+  // Calculate prize pool with null/undefined checks
+  const prizePool = 
+    totalEntries * (state.entryFee || 0) + 
+    totalRebuys * (state.rebuyFee || 0) + 
+    totalAddons * (state.addonFee || 0);
+  
+  // Calculate total chips in play with null/undefined checks
+  const totalChipsInPlay = (state.players || []).reduce((sum, player) => {
+    if (player?.isEliminated) return sum;
+    return sum + 
+      (player?.initialChips || 0) + 
+      ((player?.rebuys || 0) * (state.rebuyChips || 0)) + 
+      ((player?.addons || 0) * (state.addonChips || 0)) +
+      (player?.bountyChips || 0);
+  }, 0);
+
   return (
     <div className="p-4">
       {/* Sync Button with Connection Status and Save Status */}
@@ -255,6 +276,46 @@ export const PlayerManager: React.FC = () => {
           </div>
         </CardHeader>
         <CardBody>
+          {/* Добавляем статистику по игрокам */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <Card className="bg-content2 shadow-sm">
+              <CardBody className="p-4 text-center">
+                <div className="text-sm text-default-600 mb-1">Всего входов</div>
+                <div className="text-2xl font-bold">{totalEntries}</div>
+              </CardBody>
+            </Card>
+            
+            <Card className="bg-content2 shadow-sm">
+              <CardBody className="p-4 text-center">
+                <div className="text-sm text-default-600 mb-1">Всего ребаев</div>
+                <div className="text-2xl font-bold">{totalRebuys}</div>
+              </CardBody>
+            </Card>
+            
+            <Card className="bg-content2 shadow-sm">
+              <CardBody className="p-4 text-center">
+                <div className="text-sm text-default-600 mb-1">Всего аддонов</div>
+                <div className="text-2xl font-bold">{totalAddons}</div>
+              </CardBody>
+            </Card>
+            
+            <Card className="bg-content2 shadow-sm">
+              <CardBody className="p-4 text-center">
+                <div className="text-sm text-default-600 mb-1">Фишек в игре</div>
+                <div className="text-2xl font-bold">{totalChipsInPlay.toLocaleString()}</div>
+              </CardBody>
+            </Card>
+          </div>
+          
+          {/* Добавляем отображение призового фонда */}
+          <div className="flex justify-end mb-4">
+            {state.entryFee > 0 && (
+              <div className="bg-primary-100 text-primary-700 px-4 py-2 rounded-medium">
+                <span className="font-medium">Призовой фонд:</span> {prizePool.toLocaleString()}
+              </div>
+            )}
+          </div>
+          
           <div className="overflow-x-auto">
             <Table removeWrapper aria-label="Список игроков">
               <TableHeader>
