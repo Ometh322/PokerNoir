@@ -13,9 +13,9 @@ export default function App() {
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
       {/* Remove max-w-5xl constraint for tournament view */}
-      <Card className={`mx-auto ${selected === "tournament" ? "max-w-full" : "max-w-5xl"}`}>
+      <Card className={`mx-auto ${selected === "tournament" ? "max-w-full w-full" : "max-w-5xl"}`}>
         <CardHeader className="flex justify-between items-center px-4">
-          <h1 className="text-xl font-bold">Poker Tournament Manager</h1>
+          <h1 className="text-xl font-bold">Покерный Клуб NOIR</h1>
           <ThemeSwitcher />
         </CardHeader>
         <CardBody className="p-0">
