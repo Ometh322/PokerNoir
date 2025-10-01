@@ -14,7 +14,7 @@ export const TournamentView: React.FC = () => {
     previousLevel,
     syncData,
     syncTimerOnly,
-    saveStatus // Add this to destructuring
+    saveStatus
   } = useTournament();
   
   const currentLevel = state.levels?.[state.currentLevelIndex] || { smallBlind: 0, bigBlind: 0, ante: 0, duration: 15, type: 'level' };
@@ -324,17 +324,33 @@ const Spinner = () => (
   <div className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
 );
 
-// Добавляем эффект для принудительной синхронизации каждые 30 секунд ВНУТРИ компонента
+// Добавляем эффект для принудительной синхронизации при монтировании и периодически
 // React.useEffect(() => {
 //   // Синхронизируем данные при монтировании компонента
 //   syncData();
   
 //   // Устанавливаем интервал для регулярной синхронизации
 //   const syncInterval = setInterval(() => {
-//     syncData();
-//   }, 30000); // Каждые 30 секунд
+//     syncTimerOnly(); // Используем более легкую синхронизацию только для таймера
+//   }, 10000); // Каждые 10 секунд
   
 //   return () => {
 //     clearInterval(syncInterval);
+//   };
+// }, [syncData, syncTimerOnly]);
+
+// // Добавляем обработчик для принудительной синхронизации при изменении вкладки
+// React.useEffect(() => {
+//   const handleVisibilityChange = () => {
+//     if (document.visibilityState === 'visible') {
+//       console.log("Tab became visible, syncing data");
+//       syncData();
+//     }
+//   };
+  
+//   document.addEventListener('visibilitychange', handleVisibilityChange);
+  
+//   return () => {
+//     document.removeEventListener('visibilitychange', handleVisibilityChange);
 //   };
 // }, [syncData]);

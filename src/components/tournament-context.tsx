@@ -241,17 +241,21 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const handleFirebaseChange = (updatedData: TournamentState) => {
       if (!isMounted) return;
       
-      // Only update if the data is newer than our current state
-      if (updatedData && updatedData.lastUpdated > stateRef.current.lastUpdated) {
-        setState(updatedData);
-        setLastSyncTime(Date.now());
-        
-        // Also save to localStorage as backup
-        try {
-          localStorage.setItem("tournamentState", JSON.stringify(updatedData));
-        } catch (storageError) {
-          console.error("Failed to save to localStorage:", storageError);
-        }
+      // Add check to prevent unnecessary updates
+      if (updatedData.lastUpdated <= stateRef.current.lastUpdated) {
+        console.log("Skipping Firebase update as it's older than current state");
+        return;
+      }
+      
+      console.log("Received Firebase update, applying changes");
+      setState(updatedData);
+      setLastSyncTime(Date.now());
+      
+      // Also save to localStorage as backup
+      try {
+        localStorage.setItem("tournamentState", JSON.stringify(updatedData));
+      } catch (storageError) {
+        console.error("Failed to save to localStorage:", storageError);
       }
     };
     
@@ -318,6 +322,11 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       await firebaseService.updateActiveTournament(state);
       setSaveStatus('success');
       setLastSyncTime(Date.now());
+      
+      // Сбрасываем статус через 2 секунды
+      setTimeout(() => {
+        setSaveStatus('idle');
+      }, 2000);
     } catch (error) {
       console.error("Failed to force save:", error);
       setSaveStatus('error');
@@ -537,6 +546,14 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         return prevState;
       }
       
+      // Находим игрока перед удалением для обновления статистики
+      const playerToRemove = prevState.players.find(player => player && player.id === playerId);
+      
+      if (!playerToRemove) {
+        console.error("Player not found:", playerId);
+        return prevState;
+      }
+      
       // Фильтруем массив игроков, исключая игрока с указанным id
       const newPlayers = prevState.players.filter(player => player && player.id !== playerId);
       
@@ -560,30 +577,30 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setIsLoading(true);
       setSaveStatus('saving');
       
-      // Сначала сохраняем текущее состояние
-      await firebaseService.updateActiveTournament(state);
-      
-      // Затем получаем актуальное состояние с сервера
+      // Get the latest data from Firebase first
       const activeTournament = await firebaseService.getActiveTournament(30000); // 30s timeout
       
       if (activeTournament) {
-        // Проверяем, что полученное состояние новее текущего
+        // Only update state if Firebase data is newer
         if (activeTournament.lastUpdated > state.lastUpdated) {
           setState(activeTournament);
+          setLastSyncTime(Date.now());
+          setSaveStatus('success');
+          
+          // Save to localStorage
+          localStorage.setItem("tournamentState", JSON.stringify(activeTournament));
+        } else if (activeTournament.lastUpdated < state.lastUpdated) {
+          // Our state is newer, update Firebase but don't trigger another state update
+          await firebaseService.updateActiveTournamentWithoutNotification(state);
+          setLastSyncTime(Date.now());
+          setSaveStatus('success');
         } else {
-          // Если наше состояние новее, отправляем его на сервер
-          await firebaseService.updateActiveTournament(state);
+          // States are in sync, just update timestamp
+          setLastSyncTime(Date.now());
+          setSaveStatus('idle');
         }
-        
-        setLastSyncTime(Date.now());
-        setSaveStatus('success');
-        
-        // Также сохраняем в localStorage как резервную копию
-        localStorage.setItem("tournamentState", JSON.stringify(
-          activeTournament.lastUpdated > state.lastUpdated ? activeTournament : state
-        ));
       } else {
-        // Если нет активного турнира, создаем его с текущим состоянием
+        // No active tournament, create one with current state
         await firebaseService.createTournament(state.name || "Новый турнир", state);
         setSaveStatus('success');
       }
@@ -593,7 +610,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     } finally {
       setIsLoading(false);
       
-      // Сбрасываем статус через задержку
+      // Reset status after delay
       setTimeout(() => {
         setSaveStatus('idle');
       }, 2000);

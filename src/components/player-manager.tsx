@@ -57,10 +57,19 @@ export const PlayerManager: React.FC = () => {
     checkConnection();
   }, []); // Удаляем syncData из зависимостей
   
+  // Добавляем эффект для принудительной синхронизации при монтировании
+  React.useEffect(() => {
+    // Синхронизируем данные при монтировании компонента
+    syncData();
+  }, [syncData]);
+  
   const handleAddPlayer = () => {
     if (newPlayerName.trim()) {
       addPlayer(newPlayerName.trim());
       setNewPlayerName("");
+      
+      // Принудительно синхронизируем данные после добавления игрока
+      setTimeout(() => syncData(), 300);
     }
   };
 
@@ -68,15 +77,21 @@ export const PlayerManager: React.FC = () => {
   const handleAddRebuy = (player) => {
     if (!player || !player.id) return;
     
-    // Вызываем функцию напрямую без диалога подтверждения
+    // Вызываем функцию напрямую
     addRebuy(player.id);
+    
+    // Принудительно синхронизируем данные после действия
+    setTimeout(() => syncData(), 300);
   };
 
   const handleAddAddon = (player) => {
     if (!player || !player.id) return;
     
-    // Вызываем функцию напрямую без диалога подтверждения
+    // Вызываем функцию напрямую
     addAddon(player.id);
+    
+    // Принудительно синхронизируем данные после действия
+    setTimeout(() => syncData(), 300);
   };
 
   const handleEliminatePlayer = (player) => {
@@ -114,8 +129,11 @@ export const PlayerManager: React.FC = () => {
   const handleRemovePlayer = (player) => {
     if (!player || !player.id) return;
     
-    // Вызываем функцию напрямую без диалога подтверждения
+    // Вызываем функцию напрямую
     removePlayer(player.id);
+    
+    // Принудительно синхронизируем данные после удаления игрока
+    setTimeout(() => syncData(), 300);
   };
 
   // Добавляем обработчики для баунти и оплаты

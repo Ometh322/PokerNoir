@@ -137,32 +137,60 @@ class FirebaseService {
   private setupTournamentListener(tournamentId: string): void {
     if (!database) return;
     
-    // Clean up any existing listener for this tournament
+    // Clean up existing listener
     this.cleanupListener(`tournaments/${tournamentId}`);
     
     const tournamentRef = ref(database, `tournaments/${tournamentId}`);
     this.activeListeners[`tournaments/${tournamentId}`] = true;
     
+    // Add debounce mechanism
+    let lastUpdateTimestamp = 0;
+    let updateTimeout: NodeJS.Timeout | null = null;
+    
     onValue(tournamentRef, (snapshot) => {
       const tournament = snapshot.val() as DbTournament | null;
       
       if (tournament) {
-        // Проверяем, не является ли это обновление результатом нашего собственного изменения
-        // и проверяем, что удаленное обновление новее нашего последнего обновления
-        if (tournament.data.lastUpdated > this.lastUpdateTime) {
-          console.log("Received newer update from server:", new Date(tournament.data.lastUpdated).toLocaleTimeString());
+        // Skip if this update is too close to the previous one
+        const now = Date.now();
+        if (now - lastUpdateTimestamp < 500) {
+          console.log("Debouncing Firebase update");
           
-          // Notify all listeners of the change
-          this.changeListeners.forEach(listener => {
-            try {
-              listener(tournament.data);
-            } catch (error) {
-              console.error("Error in tournament change listener:", error);
-            }
-          });
-        } else {
-          console.log("Ignoring older update from server");
+          // Clear existing timeout
+          if (updateTimeout) {
+            clearTimeout(updateTimeout);
+          }
+          
+          // Set new timeout
+          updateTimeout = setTimeout(() => {
+            console.log("Processing debounced Firebase update");
+            lastUpdateTimestamp = now;
+            
+            // Notify listeners
+            this.changeListeners.forEach(listener => {
+              try {
+                listener(tournament.data);
+              } catch (error) {
+                console.error("Error in tournament change listener:", error);
+              }
+            });
+          }, 500);
+          
+          return;
         }
+        
+        // Update timestamp and notify listeners
+        lastUpdateTimestamp = now;
+        console.log("Received update from Firebase:", new Date(tournament.data.lastUpdated).toLocaleTimeString());
+        
+        // Notify listeners
+        this.changeListeners.forEach(listener => {
+          try {
+            listener(tournament.data);
+          } catch (error) {
+            console.error("Error in tournament change listener:", error);
+          }
+        });
       }
     }, (error) => {
       console.error(`Error listening to tournament ${tournamentId}:`, error);
@@ -320,7 +348,7 @@ class FirebaseService {
       // Сохраняем неудачное обновление для последующей повторной попытки
       localStorage.setItem("failedUpdate", JSON.stringify(dataWithTimestamp));
       
-      // Повторяем попытку через 5 секунд
+      // Повторяем попытку через 2 секунды
       setTimeout(async () => {
         try {
           await this.performUpdate(dataWithTimestamp);
@@ -329,7 +357,7 @@ class FirebaseService {
         } catch (retryError) {
           console.error("Retry failed:", retryError);
         }
-      }, 5000);
+      }, 2000);
       
       throw error;
     }
@@ -582,6 +610,57 @@ class FirebaseService {
         // Wait before retrying
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
+    }
+  }
+
+  // Add a method to update without triggering notifications
+  public async updateActiveTournamentWithoutNotification(data: TournamentState): Promise<void> {
+    // Update time in data
+    const dataWithTimestamp = {
+      ...data,
+      lastUpdated: Date.now()
+    };
+    
+    // Save to localStorage
+    try {
+      localStorage.setItem("tournamentState", JSON.stringify(dataWithTimestamp));
+    } catch (error) {
+      console.error("Failed to save to localStorage:", error);
+    }
+    
+    // Skip if Firebase not initialized
+    if (!database) {
+      console.log("Firebase not initialized, skipping update");
+      return;
+    }
+    
+    try {
+      // Get active tournament ID
+      const activeIdSnapshot = await get(ref(database, 'activeTournamentId'));
+      const activeId = activeIdSnapshot.val();
+      
+      if (!activeId) {
+        console.log("No active tournament found, skipping update");
+        return;
+      }
+      
+      // Temporarily disable listeners
+      const listenersBackup = [...this.changeListeners];
+      this.changeListeners = [];
+      
+      // Update tournament data
+      await set(ref(database, `tournaments/${activeId}/data`), dataWithTimestamp);
+      await set(ref(database, `tournaments/${activeId}/lastUpdated`), Date.now());
+      
+      // Restore listeners after a short delay
+      setTimeout(() => {
+        this.changeListeners = listenersBackup;
+      }, 1000);
+      
+      console.log("Tournament data saved to Firebase without notification");
+    } catch (error) {
+      console.error("Failed to save to Firebase:", error);
+      throw error;
     }
   }
 }
